@@ -87,3 +87,9 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'API for the Distributed Systems ecommerce project',
     'VERSION': '1.0.0',
 }
+
+# Celery
+CELERY_BROKER_URL = config('REDIS_URL', default='redis://redis:6379/0')
+CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://redis:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
