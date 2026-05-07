@@ -85,3 +85,88 @@ class JwtClaimsTests(APITestCase):
         self.assertIsNone(access_token['tenant_id'])
         self.assertEqual(refresh_token['role'], 'customer')
         self.assertIsNone(refresh_token['tenant_id'])
+
+
+class UserProfileTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store',
+            domain='acme.example.com',
+            plan='basic',
+        )
+        self.other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store',
+            domain='other.example.com',
+            plan='premium',
+        )
+        self.user = User.objects.create_user(
+            email='customer@example.com',
+            password='StrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+            tenant=self.tenant,
+        )
+
+    def test_user_can_patch_own_profile(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            reverse('user-me'),
+            {
+                'first_name': 'Updated',
+                'last_name': 'Customer',
+                'phone': '+36301234567',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Updated')
+        self.assertEqual(self.user.last_name, 'Customer')
+        self.assertEqual(self.user.phone, '+36301234567')
+        self.assertEqual(response.data['first_name'], 'Updated')
+
+    def test_profile_patch_does_not_update_role_or_tenant(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            reverse('user-me'),
+            {
+                'role': 'superadmin',
+                'tenant': self.other_tenant.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.role, 'customer')
+        self.assertEqual(self.user.tenant, self.tenant)
+        self.assertEqual(response.data['role'], 'customer')
+        self.assertEqual(response.data['tenant'], self.tenant.id)
+
+    def test_auth_me_route_also_supports_patch(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            reverse('me'),
+            {'phone': '+36307654321'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.phone, '+36307654321')
+
+    def test_profile_patch_requires_authentication(self):
+        response = self.client.patch(
+            reverse('user-me'),
+            {'first_name': 'Updated'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

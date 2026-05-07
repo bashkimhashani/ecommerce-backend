@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 
 
 class Tenant(models.Model):
@@ -12,6 +13,13 @@ class Tenant(models.Model):
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
     domain = models.CharField(max_length=255, unique=True)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='owned_tenants'
+    )
     plan = models.CharField(
         max_length=20,
         choices=PLAN_CHOICES,
