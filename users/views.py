@@ -4,7 +4,15 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .serializers import RegisterSerializer, UserSerializer
+from .serializers import (
+    CustomTokenObtainPairSerializer,
+    RegisterSerializer,
+    UserSerializer,
+)
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
 
 
 class RegisterView(APIView):
@@ -14,7 +22,7 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            refresh = RefreshToken.for_user(user)
+            refresh = CustomTokenObtainPairSerializer.get_token(user)
             return Response({
                 'user': UserSerializer(user).data,
                 'access': str(refresh.access_token),
