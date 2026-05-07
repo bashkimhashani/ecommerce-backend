@@ -29,6 +29,41 @@ class RoleGroupMigrationTests(APITestCase):
         self.assertEqual(existing_groups, expected_groups)
 
 
+class RoleGroupAssignmentTests(APITestCase):
+    def test_user_is_auto_assigned_group_matching_role_on_creation(self):
+        roles = [
+            'vendor_admin',
+            'store_staff',
+            'customer',
+        ]
+
+        for role in roles:
+            with self.subTest(role=role):
+                user = User.objects.create_user(
+                    email=f'{role}@example.com',
+                    password='StrongPass123',
+                    first_name='Role',
+                    last_name='User',
+                    role=role,
+                )
+
+                self.assertTrue(user.groups.filter(name=role).exists())
+
+    def test_superadmin_is_not_assigned_managed_role_group(self):
+        user = User.objects.create_superuser(
+            email='superadmin@example.com',
+            password='StrongPass123',
+            first_name='Super',
+            last_name='Admin',
+        )
+
+        self.assertFalse(
+            user.groups.filter(
+                name__in=['vendor_admin', 'store_staff', 'customer']
+            ).exists()
+        )
+
+
 class JwtClaimsTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
