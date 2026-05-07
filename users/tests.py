@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -8,6 +9,24 @@ from tenants.models import Tenant
 
 
 User = get_user_model()
+
+
+class RoleGroupMigrationTests(APITestCase):
+    def test_role_groups_exist_after_migrations(self):
+        expected_groups = {
+            'vendor_admin',
+            'store_staff',
+            'customer',
+        }
+
+        existing_groups = set(
+            Group.objects.filter(name__in=expected_groups).values_list(
+                'name',
+                flat=True,
+            )
+        )
+
+        self.assertEqual(existing_groups, expected_groups)
 
 
 class JwtClaimsTests(APITestCase):
