@@ -1,6 +1,11 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.contrib.auth.tokens import default_token_generator
 from django.urls import reverse
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
@@ -139,6 +144,110 @@ class JwtClaimsTests(APITestCase):
         self.assertIsNone(access_token['tenant_id'])
         self.assertEqual(refresh_token['role'], 'customer')
         self.assertIsNone(refresh_token['tenant_id'])
+
+
+class PasswordResetTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='customer@example.com',
+            password='OldStrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+        )
+
+    def test_password_reset_sends_email_task_for_existing_user(self):
+        with patch('users.views.send_password_reset_email.delay') as delay:
+            response = self.client.post(
+                reverse('password-reset'),
+                {'email': 'customer@example.com'},
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        delay.assert_called_once()
+        user_id, uid, token = delay.call_args.args
+        self.assertEqual(user_id, self.user.id)
+        self.assertEqual(
+            uid,
+            urlsafe_base64_encode(force_bytes(self.user.pk)),
+        )
+        self.assertTrue(default_token_generator.check_token(self.user, token))
+
+    def test_password_reset_does_not_reveal_unknown_email(self):
+        with patch('users.views.send_password_reset_email.delay') as delay:
+            response = self.client.post(
+                reverse('password-reset'),
+                {'email': 'missing@example.com'},
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        delay.assert_not_called()
+
+    def test_password_reset_confirm_sets_new_password(self):
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+
+        response = self.client.post(
+            reverse('password-reset-confirm'),
+            {
+                'uid': uid,
+                'token': token,
+                'new_password': 'NewStrongPass123',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewStrongPass123'))
+
+    def test_password_reset_confirm_rejects_invalid_token(self):
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+
+        response = self.client.post(
+            reverse('password-reset-confirm'),
+            {
+                'uid': uid,
+                'token': 'invalid-token',
+                'new_password': 'NewStrongPass123',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('OldStrongPass123'))
+
+    def test_password_reset_token_cannot_be_reused_after_password_change(self):
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+
+        first_response = self.client.post(
+            reverse('password-reset-confirm'),
+            {
+                'uid': uid,
+                'token': token,
+                'new_password': 'NewStrongPass123',
+            },
+            format='json',
+        )
+        second_response = self.client.post(
+            reverse('password-reset-confirm'),
+            {
+                'uid': uid,
+                'token': token,
+                'new_password': 'AnotherStrongPass123',
+            },
+            format='json',
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            second_response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class UserProfileTests(APITestCase):
