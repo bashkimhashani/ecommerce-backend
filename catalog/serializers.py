@@ -218,16 +218,23 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         sku = attrs.get('sku')
         errors = {}
 
-        if slug and Product.all_objects.filter(
+        slug_exists = Product.all_objects.filter(
             tenant=tenant,
             slug=slug,
-        ).exists():
-            errors['slug'] = 'A product with this slug already exists.'
-
-        if sku and Product.all_objects.filter(
+        )
+        sku_exists = Product.all_objects.filter(
             tenant=tenant,
             sku=sku,
-        ).exists():
+        )
+
+        if self.instance:
+            slug_exists = slug_exists.exclude(id=self.instance.id)
+            sku_exists = sku_exists.exclude(id=self.instance.id)
+
+        if slug and slug_exists.exists():
+            errors['slug'] = 'A product with this slug already exists.'
+
+        if sku and sku_exists.exists():
             errors['sku'] = 'A product with this SKU already exists.'
 
         if errors:

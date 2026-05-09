@@ -118,6 +118,11 @@ class ProductListView(APIView):
 class ProductDetailView(APIView):
     permission_classes = [AllowAny]
 
+    def get_permissions(self):
+        if self.request.method == 'PUT':
+            return [IsVendorAdmin()]
+        return [permission() for permission in self.permission_classes]
+
     @extend_schema(
         responses=ProductDetailSerializer,
         tags=['Catalog'],
@@ -142,6 +147,30 @@ class ProductDetailView(APIView):
             context={'request': request},
         )
         return Response(serializer.data)
+
+    @extend_schema(
+        request=ProductCreateSerializer,
+        responses=ProductDetailSerializer,
+        tags=['Catalog'],
+    )
+    def put(self, request, slug):
+        product = get_object_or_404(
+            Product.all_objects,
+            slug=slug,
+            tenant_id=request.user.tenant_id,
+        )
+        serializer = ProductCreateSerializer(
+            product,
+            data=request.data,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save(tenant=request.user.tenant)
+        response_serializer = ProductDetailSerializer(
+            product,
+            context={'request': request},
+        )
+        return Response(response_serializer.data)
 
 
 class ProductImageUploadView(APIView):
