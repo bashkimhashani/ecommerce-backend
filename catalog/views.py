@@ -15,6 +15,7 @@ from .models import Category, Product, ProductImage
 from .pagination import ProductCursorPagination
 from .serializers import (
     CategoryTreeSerializer,
+    ProductDetailSerializer,
     ProductListSerializer,
     ProductImageBulkUpdateSerializer,
     ProductImageSerializer,
@@ -85,6 +86,35 @@ class ProductListView(APIView):
             context={'request': request},
         )
         return paginator.get_paginated_response(serializer.data)
+
+
+class ProductDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        responses=ProductDetailSerializer,
+        tags=['Catalog'],
+    )
+    def get(self, request, slug):
+        products = Product.all_objects.filter(
+            status=Product.Status.ACTIVE,
+        ).select_related(
+            'brand',
+            'category',
+        ).prefetch_related(
+            'variants',
+            'images',
+        )
+
+        if request.user.is_authenticated and request.user.tenant_id:
+            products = products.filter(tenant_id=request.user.tenant_id)
+
+        product = get_object_or_404(products, slug=slug)
+        serializer = ProductDetailSerializer(
+            product,
+            context={'request': request},
+        )
+        return Response(serializer.data)
 
 
 class ProductImageUploadView(APIView):

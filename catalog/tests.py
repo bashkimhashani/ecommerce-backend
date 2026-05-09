@@ -552,6 +552,154 @@ class ProductListEndpointTests(APITestCase):
         self.assertIsNotNone(second_response.data['previous'])
 
 
+class ProductDetailEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store-detail',
+            domain='detail.acme.example.com',
+            plan='basic',
+        )
+        self.user = User.objects.create_user(
+            email='detail-vendor@example.com',
+            password='StrongPass123',
+            first_name='Detail',
+            last_name='Vendor',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        self.brand = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple-detail',
+            country_of_origin='United States',
+        )
+        self.category = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops-detail',
+            icon_url='https://example.com/icons/laptops.svg',
+        )
+        self.product = Product.all_objects.create(
+            tenant=self.tenant,
+            name='MacBook Pro 14',
+            slug='macbook-pro-14-detail',
+            sku='MBP14-DETAIL-001',
+            brand=self.brand,
+            category=self.category,
+            status=Product.Status.ACTIVE,
+            base_price='1999.00',
+            tech_specs={
+                'cpu': 'M3 Pro',
+                'ram': '18GB',
+                'storage': '512GB SSD',
+            },
+        )
+        self.url = reverse(
+            'product-detail',
+            kwargs={'slug': self.product.slug},
+        )
+
+    def test_product_detail_endpoint_returns_nested_product(self):
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            color='Space Black',
+            storage='512GB',
+            ram='18GB',
+            variant_price='1999.00',
+            stock_quantity=8,
+        )
+        ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image='products/images/macbook-pro.jpg',
+            thumbnail='products/images/generated/macbook-pro_thumbnail.jpg',
+            medium='products/images/generated/macbook-pro_medium.jpg',
+            large='products/images/generated/macbook-pro_large.jpg',
+            alt_text='MacBook Pro open on desk',
+            sort_order=0,
+            is_primary=True,
+        )
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], 'MacBook Pro 14')
+        self.assertEqual(response.data['slug'], self.product.slug)
+        self.assertEqual(response.data['sku'], 'MBP14-DETAIL-001')
+        self.assertEqual(response.data['price'], '1999.00')
+        self.assertEqual(response.data['brand']['slug'], 'apple-detail')
+        self.assertEqual(response.data['category']['slug'], 'laptops-detail')
+        self.assertEqual(response.data['specs']['cpu'], 'M3 Pro')
+        self.assertEqual(len(response.data['variants']), 1)
+        self.assertEqual(
+            response.data['variants'][0]['stock_quantity'],
+            8,
+        )
+        self.assertEqual(len(response.data['images']), 1)
+        self.assertTrue(response.data['images'][0]['is_primary'])
+        self.assertEqual(
+            response.data['images'][0]['alt_text'],
+            'MacBook Pro open on desk',
+        )
+
+    def test_product_detail_endpoint_returns_404_for_inactive_product(self):
+        draft_product = Product.all_objects.create(
+            tenant=self.tenant,
+            name='Draft Product',
+            slug='draft-product-detail',
+            sku='DRAFT-DETAIL-001',
+            brand=self.brand,
+            category=self.category,
+            status=Product.Status.DRAFT,
+            base_price='899.00',
+            tech_specs={'cpu': 'M2'},
+        )
+
+        response = self.client.get(
+            reverse('product-detail', kwargs={'slug': draft_product.slug}),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_product_detail_endpoint_scopes_authenticated_user_to_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store-detail',
+            domain='detail.other.example.com',
+            plan='basic',
+        )
+        other_brand = Brand.all_objects.create(
+            tenant=other_tenant,
+            name='Dell',
+            slug='dell-detail',
+        )
+        other_category = Category.all_objects.create(
+            tenant=other_tenant,
+            name='Laptops',
+            slug='other-laptops-detail',
+        )
+        other_product = Product.all_objects.create(
+            tenant=other_tenant,
+            name='Dell XPS Detail',
+            slug='dell-xps-detail',
+            sku='DXPS-DETAIL-001',
+            brand=other_brand,
+            category=other_category,
+            status=Product.Status.ACTIVE,
+            base_price='1299.00',
+            tech_specs={'cpu': 'Intel Core Ultra'},
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(
+            reverse('product-detail', kwargs={'slug': other_product.slug}),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class ProductImageUploadEndpointTests(APITestCase):
     def setUp(self):
         self.media_root = tempfile.mkdtemp()
