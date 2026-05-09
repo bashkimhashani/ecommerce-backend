@@ -857,6 +857,127 @@ class ProductUpdateEndpointTests(APITestCase):
         self.assertIn('sku', response.data)
 
 
+class ProductDeleteEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store-delete',
+            domain='delete.acme.example.com',
+            plan='basic',
+        )
+        self.vendor = User.objects.create_user(
+            email='delete-vendor@example.com',
+            password='StrongPass123',
+            first_name='Delete',
+            last_name='Vendor',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        self.customer = User.objects.create_user(
+            email='delete-customer@example.com',
+            password='StrongPass123',
+            first_name='Delete',
+            last_name='Customer',
+            role='customer',
+            tenant=self.tenant,
+        )
+        self.brand = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple-delete',
+        )
+        self.category = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops-delete',
+        )
+        self.product = Product.all_objects.create(
+            tenant=self.tenant,
+            name='MacBook Air Delete',
+            slug='macbook-air-delete',
+            sku='MBA-DELETE-001',
+            brand=self.brand,
+            category=self.category,
+            status=Product.Status.ACTIVE,
+            base_price='999.00',
+            tech_specs={'cpu': 'M2'},
+        )
+        self.url = reverse(
+            'product-detail',
+            kwargs={'slug': self.product.slug},
+        )
+
+    def test_vendor_can_delete_product(self):
+        product_image = ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image='products/images/delete.jpg',
+            thumbnail='products/images/generated/delete_thumbnail.jpg',
+            sort_order=0,
+            is_primary=True,
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.delete(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            Product.all_objects.filter(id=self.product.id).exists()
+        )
+        self.assertFalse(
+            ProductImage.all_objects.filter(id=product_image.id).exists()
+        )
+
+    def test_non_vendor_cannot_delete_product(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.delete(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(
+            Product.all_objects.filter(id=self.product.id).exists()
+        )
+
+    def test_vendor_cannot_delete_other_tenant_product(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store-delete',
+            domain='delete.other.example.com',
+            plan='basic',
+        )
+        other_brand = Brand.all_objects.create(
+            tenant=other_tenant,
+            name='Dell',
+            slug='dell-delete',
+        )
+        other_category = Category.all_objects.create(
+            tenant=other_tenant,
+            name='Laptops',
+            slug='other-laptops-delete',
+        )
+        other_product = Product.all_objects.create(
+            tenant=other_tenant,
+            name='Dell XPS Delete',
+            slug='dell-xps-delete',
+            sku='DXPS-DELETE-001',
+            brand=other_brand,
+            category=other_category,
+            status=Product.Status.ACTIVE,
+            base_price='1299.00',
+            tech_specs={'cpu': 'Intel Core Ultra'},
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.delete(
+            reverse('product-detail', kwargs={'slug': other_product.slug}),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(
+            Product.all_objects.filter(id=other_product.id).exists()
+        )
+
+
 class ProductDetailEndpointTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(

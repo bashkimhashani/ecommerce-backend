@@ -119,7 +119,7 @@ class ProductDetailView(APIView):
     permission_classes = [AllowAny]
 
     def get_permissions(self):
-        if self.request.method == 'PUT':
+        if self.request.method in ['PUT', 'DELETE']:
             return [IsVendorAdmin()]
         return [permission() for permission in self.permission_classes]
 
@@ -171,6 +171,24 @@ class ProductDetailView(APIView):
             context={'request': request},
         )
         return Response(response_serializer.data)
+
+    @extend_schema(
+        responses={status.HTTP_204_NO_CONTENT: None},
+        tags=['Catalog'],
+    )
+    def delete(self, request, slug):
+        product = get_object_or_404(
+            Product.all_objects.prefetch_related('images'),
+            slug=slug,
+            tenant_id=request.user.tenant_id,
+        )
+
+        for product_image in product.images.all():
+            for field_name in ['thumbnail', 'medium', 'large', 'image']:
+                getattr(product_image, field_name).delete(save=False)
+
+        product.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ProductImageUploadView(APIView):
