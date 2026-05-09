@@ -6,6 +6,8 @@ from tenants.mixins import TenantModel
 class Brand(TenantModel):
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255)
+    logo = models.ImageField(upload_to='brands/logos/', null=True, blank=True)
+    country_of_origin = models.CharField(max_length=100, blank=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

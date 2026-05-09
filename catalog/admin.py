@@ -5,9 +5,9 @@ from .models import Brand, Category, Product
 
 @admin.register(Brand)
 class BrandAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'tenant', 'created_at')
-    search_fields = ('name', 'slug')
-    list_filter = ('tenant',)
+    list_display = ('name', 'slug', 'country_of_origin', 'tenant', 'created_at')
+    search_fields = ('name', 'slug', 'country_of_origin')
+    list_filter = ('country_of_origin', 'tenant')
     prepopulated_fields = {'slug': ('name',)}
 
 
