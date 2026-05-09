@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category
+from .models import Category, ProductImage
 
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
@@ -25,3 +25,22 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
             context=self.context,
         )
         return serializer.data
+
+
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = [
+            'id',
+            'image',
+            'alt_text',
+            'sort_order',
+            'is_primary',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+        ]
