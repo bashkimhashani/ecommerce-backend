@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Brand, Category, Product
+from .models import Brand, Category, Product, ProductVariant
 
 
 @admin.register(Brand)
@@ -25,3 +25,10 @@ class ProductAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'sku', 'brand__name', 'category__name')
     list_filter = ('status', 'brand', 'category', 'tenant')
     prepopulated_fields = {'slug': ('name',)}
+
+
+@admin.register(ProductVariant)
+class ProductVariantAdmin(admin.ModelAdmin):
+    list_display = ('product', 'color', 'storage', 'ram', 'variant_price', 'stock_quantity', 'tenant')
+    search_fields = ('product__name', 'product__sku', 'color', 'storage', 'ram')
+    list_filter = ('color', 'storage', 'ram', 'tenant')
