@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, Product, ProductImage
+from .models import Brand, Category, Product, ProductImage, ProductVariant
 
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
@@ -93,6 +93,78 @@ class ProductImageSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+
+class BrandSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Brand
+        fields = [
+            'id',
+            'name',
+            'slug',
+            'logo',
+            'country_of_origin',
+        ]
+
+
+class CategorySummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = [
+            'id',
+            'name',
+            'slug',
+            'icon_url',
+        ]
+
+
+class ProductVariantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductVariant
+        fields = [
+            'id',
+            'color',
+            'storage',
+            'ram',
+            'variant_price',
+            'stock_quantity',
+        ]
+
+
+class ProductDetailSerializer(serializers.ModelSerializer):
+    price = serializers.DecimalField(
+        source='base_price',
+        max_digits=10,
+        decimal_places=2,
+    )
+    brand = BrandSummarySerializer(read_only=True)
+    category = CategorySummarySerializer(read_only=True)
+    variants = ProductVariantSerializer(many=True, read_only=True)
+    images = ProductImageSerializer(many=True, read_only=True)
+    specs = serializers.JSONField(source='tech_specs')
+    avg_rating = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Product
+        fields = [
+            'id',
+            'name',
+            'slug',
+            'sku',
+            'brand',
+            'category',
+            'status',
+            'price',
+            'specs',
+            'variants',
+            'images',
+            'avg_rating',
+            'created_at',
+            'updated_at',
+        ]
+
+    def get_avg_rating(self, obj):
+        return getattr(obj, 'avg_rating', None)
 
 
 class ProductImageBulkUpdateItemSerializer(serializers.Serializer):

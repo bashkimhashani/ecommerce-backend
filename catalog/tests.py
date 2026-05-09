@@ -12,8 +12,8 @@ from rest_framework.test import APITestCase
 
 from tenants.models import Tenant
 
-from .models import Brand, Category, Product, ProductImage
-from .serializers import ProductListSerializer
+from .models import Brand, Category, Product, ProductImage, ProductVariant
+from .serializers import ProductDetailSerializer, ProductListSerializer
 
 
 User = get_user_model()
@@ -103,6 +103,98 @@ class ProductListSerializerTests(APITestCase):
         serializer = ProductListSerializer(self.product)
 
         self.assertEqual(serializer.data['avg_rating'], 4.5)
+
+
+class ProductDetailSerializerTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store',
+            domain='acme.example.com',
+            plan='basic',
+        )
+        self.brand = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple',
+            country_of_origin='United States',
+        )
+        self.category = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops',
+            icon_url='https://example.com/icons/laptops.svg',
+        )
+        self.product = Product.all_objects.create(
+            tenant=self.tenant,
+            name='MacBook Air',
+            slug='macbook-air',
+            sku='MBA-001',
+            brand=self.brand,
+            category=self.category,
+            status='active',
+            base_price='999.00',
+            tech_specs={
+                'cpu': 'M3',
+                'ram': '8GB',
+                'storage': '256GB SSD',
+            },
+        )
+
+    def test_product_detail_serializer_returns_nested_product_fields(self):
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            color='Midnight',
+            storage='256GB',
+            ram='8GB',
+            variant_price='999.00',
+            stock_quantity=12,
+        )
+        ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image='products/images/macbook.jpg',
+            thumbnail='products/images/generated/macbook_thumbnail.jpg',
+            medium='products/images/generated/macbook_medium.jpg',
+            large='products/images/generated/macbook_large.jpg',
+            alt_text='MacBook Air front view',
+            sort_order=0,
+            is_primary=True,
+        )
+        product = Product.all_objects.select_related(
+            'brand',
+            'category',
+        ).prefetch_related(
+            'variants',
+            'images',
+        ).get(id=self.product.id)
+        product.avg_rating = 4.75
+
+        serializer = ProductDetailSerializer(product)
+
+        self.assertEqual(serializer.data['name'], 'MacBook Air')
+        self.assertEqual(serializer.data['sku'], 'MBA-001')
+        self.assertEqual(serializer.data['price'], '999.00')
+        self.assertEqual(serializer.data['brand']['slug'], 'apple')
+        self.assertEqual(serializer.data['category']['slug'], 'laptops')
+        self.assertEqual(serializer.data['specs']['cpu'], 'M3')
+        self.assertEqual(serializer.data['avg_rating'], 4.75)
+        self.assertEqual(len(serializer.data['variants']), 1)
+        self.assertEqual(
+            serializer.data['variants'][0]['color'],
+            'Midnight',
+        )
+        self.assertEqual(
+            serializer.data['variants'][0]['stock_quantity'],
+            12,
+        )
+        self.assertEqual(len(serializer.data['images']), 1)
+        self.assertEqual(
+            serializer.data['images'][0]['alt_text'],
+            'MacBook Air front view',
+        )
+        self.assertTrue(serializer.data['images'][0]['is_primary'])
 
 
 class CategoryTreeEndpointTests(APITestCase):
