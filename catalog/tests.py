@@ -394,10 +394,10 @@ class ProductListEndpointTests(APITestCase):
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]['id'], active_product.id)
-        self.assertEqual(response.data[0]['name'], 'MacBook Air')
-        self.assertEqual(response.data[0]['price'], '999.00')
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['id'], active_product.id)
+        self.assertEqual(response.data['results'][0]['name'], 'MacBook Air')
+        self.assertEqual(response.data['results'][0]['price'], '999.00')
 
     def test_product_list_endpoint_response_uses_lightweight_shape(self):
         self.create_product()
@@ -406,7 +406,15 @@ class ProductListEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            set(response.data[0].keys()),
+            set(response.data.keys()),
+            {
+                'next',
+                'previous',
+                'results',
+            },
+        )
+        self.assertEqual(
+            set(response.data['results'][0].keys()),
             {
                 'id',
                 'name',
@@ -449,7 +457,7 @@ class ProductListEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            [product['id'] for product in response.data],
+            [product['id'] for product in response.data['results']],
             [own_product.id],
         )
 
@@ -469,7 +477,7 @@ class ProductListEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            response.data[0]['thumbnail'],
+            response.data['results'][0]['thumbnail'],
             'http://testserver/media/products/images/generated/'
             'macbook_thumbnail.jpg',
         )
@@ -498,8 +506,37 @@ class ProductListEndpointTests(APITestCase):
             response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 5)
-        self.assertTrue(all(product['thumbnail'] for product in response.data))
+        self.assertEqual(len(response.data['results']), 5)
+        self.assertTrue(
+            all(product['thumbnail'] for product in response.data['results'])
+        )
+
+    def test_product_list_endpoint_uses_cursor_pagination_page_size_24(self):
+        for product_number in range(25):
+            self.create_product(
+                name=f'Paged Product {product_number:02}',
+                slug=f'paged-product-{product_number:02}',
+                sku=f'PAGED-{product_number:02}',
+            )
+        self.client.force_authenticate(user=self.user)
+
+        first_response = self.client.get(self.url)
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(first_response.data['results']), 24)
+        self.assertIsNotNone(first_response.data['next'])
+        self.assertIsNone(first_response.data['previous'])
+
+        next_url = first_response.data['next'].replace(
+            'http://testserver',
+            '',
+        )
+        second_response = self.client.get(next_url)
+
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(second_response.data['results']), 1)
+        self.assertIsNone(second_response.data['next'])
+        self.assertIsNotNone(second_response.data['previous'])
 
 
 class ProductImageUploadEndpointTests(APITestCase):

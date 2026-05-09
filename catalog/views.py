@@ -1,8 +1,8 @@
 from django.db import transaction
 from django.db.models import Max, Prefetch
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from users.permissions import IsVendorAdmin
 
 from .models import Category, Product, ProductImage
+from .pagination import ProductCursorPagination
 from .serializers import (
     CategoryTreeSerializer,
     ProductListSerializer,
@@ -43,9 +44,17 @@ class CategoryTreeView(APIView):
 
 class ProductListView(APIView):
     permission_classes = [AllowAny]
+    pagination_class = ProductCursorPagination
 
     @extend_schema(
-        responses=ProductListSerializer(many=True),
+        responses=inline_serializer(
+            name='PaginatedProductListResponse',
+            fields={
+                'next': serializers.URLField(allow_null=True),
+                'previous': serializers.URLField(allow_null=True),
+                'results': ProductListSerializer(many=True),
+            },
+        ),
         tags=['Catalog'],
     )
     def get(self, request):
@@ -68,13 +77,14 @@ class ProductListView(APIView):
         if request.user.is_authenticated and request.user.tenant_id:
             products = products.filter(tenant_id=request.user.tenant_id)
 
-        products = products.order_by('name', 'id')
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(products, request, view=self)
         serializer = ProductListSerializer(
-            products,
+            page,
             many=True,
             context={'request': request},
         )
-        return Response(serializer.data)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class ProductImageUploadView(APIView):
