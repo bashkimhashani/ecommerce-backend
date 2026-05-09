@@ -1,8 +1,10 @@
 import shutil
 import tempfile
 from io import BytesIO
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
@@ -340,6 +342,7 @@ class CategoryTreeEndpointTests(APITestCase):
 
 class ProductListEndpointTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.tenant = Tenant.objects.create(
             name='Acme Store',
             slug='acme-store-products',
@@ -514,6 +517,28 @@ class ProductListEndpointTests(APITestCase):
         self.assertTrue(
             all(product['thumbnail'] for product in response.data['results'])
         )
+
+    def test_product_list_endpoint_uses_cache_get_or_set_with_300s_ttl(self):
+        self.create_product()
+        self.client.force_authenticate(user=self.user)
+
+        with patch('catalog.views.cache.get_or_set') as get_or_set:
+            get_or_set.side_effect = (
+                lambda cache_key, default, timeout: default()
+            )
+
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        get_or_set.assert_called_once()
+        cache_key, default, timeout = get_or_set.call_args.args
+        self.assertTrue(
+            cache_key.startswith(
+                f'catalog:product-list:tenant:{self.tenant.id}:',
+            )
+        )
+        self.assertEqual(timeout, 300)
+        self.assertTrue(callable(default))
 
     def test_product_list_endpoint_uses_cursor_pagination_page_size_24(self):
         paged_products = []

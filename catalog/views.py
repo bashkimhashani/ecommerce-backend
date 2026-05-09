@@ -1,3 +1,6 @@
+from hashlib import md5
+
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Max, Prefetch
 from django.shortcuts import get_object_or_404
@@ -56,7 +59,16 @@ class CategoryTreeView(APIView):
 class ProductListView(VendorWritePermissionMixin, APIView):
     permission_classes = [AllowAny]
     pagination_class = ProductCursorPagination
+    cache_timeout = 300
     vendor_write_methods = {'POST'}
+
+    def get_cache_key(self, request):
+        tenant_id = getattr(getattr(request, 'user', None), 'tenant_id', None)
+        tenant_scope = f'tenant:{tenant_id}' if tenant_id else 'tenant:public'
+        query_hash = md5(
+            request.META.get('QUERY_STRING', '').encode('utf-8'),
+        ).hexdigest()
+        return f'catalog:product-list:{tenant_scope}:{query_hash}'
 
     @extend_schema(
         responses=inline_serializer(
@@ -70,6 +82,14 @@ class ProductListView(VendorWritePermissionMixin, APIView):
         tags=['Catalog'],
     )
     def get(self, request):
+        response_data = cache.get_or_set(
+            self.get_cache_key(request),
+            lambda: self.get_product_list_data(request),
+            self.cache_timeout,
+        )
+        return Response(response_data)
+
+    def get_product_list_data(self, request):
         product_images = ProductImage.all_objects.only(
             'id',
             'product_id',
@@ -96,7 +116,7 @@ class ProductListView(VendorWritePermissionMixin, APIView):
             many=True,
             context={'request': request},
         )
-        return paginator.get_paginated_response(serializer.data)
+        return paginator.get_paginated_response(serializer.data).data
 
     @extend_schema(
         request=ProductCreateSerializer,
