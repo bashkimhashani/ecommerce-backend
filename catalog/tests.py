@@ -401,6 +401,7 @@ class ProductListEndpointTests(APITestCase):
 
     def test_product_list_endpoint_response_uses_lightweight_shape(self):
         self.create_product()
+        self.client.force_authenticate(user=self.user)
 
         response = self.client.get(self.url)
 
@@ -413,6 +414,9 @@ class ProductListEndpointTests(APITestCase):
                 'results',
             },
         )
+        self.assertIsNone(response.data['next'])
+        self.assertIsNone(response.data['previous'])
+        self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(
             set(response.data['results'][0].keys()),
             {
@@ -512,18 +516,23 @@ class ProductListEndpointTests(APITestCase):
         )
 
     def test_product_list_endpoint_uses_cursor_pagination_page_size_24(self):
+        paged_products = []
         for product_number in range(25):
-            self.create_product(
+            paged_products.append(self.create_product(
                 name=f'Paged Product {product_number:02}',
                 slug=f'paged-product-{product_number:02}',
                 sku=f'PAGED-{product_number:02}',
-            )
+            ))
         self.client.force_authenticate(user=self.user)
 
         first_response = self.client.get(self.url)
 
         self.assertEqual(first_response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(first_response.data['results']), 24)
+        self.assertEqual(
+            [product['id'] for product in first_response.data['results']],
+            [product.id for product in paged_products[:24]],
+        )
         self.assertIsNotNone(first_response.data['next'])
         self.assertIsNone(first_response.data['previous'])
 
@@ -535,6 +544,10 @@ class ProductListEndpointTests(APITestCase):
 
         self.assertEqual(second_response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(second_response.data['results']), 1)
+        self.assertEqual(
+            [product['id'] for product in second_response.data['results']],
+            [paged_products[24].id],
+        )
         self.assertIsNone(second_response.data['next'])
         self.assertIsNotNone(second_response.data['previous'])
 
