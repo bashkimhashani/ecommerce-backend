@@ -44,3 +44,21 @@ class ProductImageSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+
+class ProductImageBulkUpdateItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    sort_order = serializers.IntegerField(min_value=0)
+    alt_text = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
+    is_primary = serializers.BooleanField(required=False)
+
+
+class ProductImageBulkUpdateSerializer(serializers.Serializer):
+    images = ProductImageBulkUpdateItemSerializer(
+        many=True,
+        allow_empty=False,
+    )

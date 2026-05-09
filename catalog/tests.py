@@ -338,3 +338,138 @@ class ProductImageUploadEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertFalse(ProductImage.all_objects.exists())
+
+    def create_product_image(self, sort_order, is_primary=False, alt_text=''):
+        return ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image=f'products/images/image-{sort_order}.gif',
+            alt_text=alt_text,
+            sort_order=sort_order,
+            is_primary=is_primary,
+        )
+
+    def test_vendor_can_reorder_product_images(self):
+        first_image = self.create_product_image(0, alt_text='First')
+        second_image = self.create_product_image(1, alt_text='Second')
+        third_image = self.create_product_image(2, alt_text='Third')
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.patch(
+            self.url,
+            {
+                'images': [
+                    {'id': third_image.id, 'sort_order': 0},
+                    {
+                        'id': first_image.id,
+                        'sort_order': 1,
+                        'alt_text': 'Updated first',
+                    },
+                    {'id': second_image.id, 'sort_order': 2},
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [image['id'] for image in response.data],
+            [third_image.id, first_image.id, second_image.id],
+        )
+        first_image.refresh_from_db()
+        second_image.refresh_from_db()
+        third_image.refresh_from_db()
+        self.assertEqual(third_image.sort_order, 0)
+        self.assertEqual(first_image.sort_order, 1)
+        self.assertEqual(first_image.alt_text, 'Updated first')
+        self.assertEqual(second_image.sort_order, 2)
+
+    def test_vendor_can_change_primary_image_when_reordering(self):
+        first_image = self.create_product_image(0, is_primary=True)
+        second_image = self.create_product_image(1)
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.patch(
+            self.url,
+            {
+                'images': [
+                    {
+                        'id': first_image.id,
+                        'sort_order': 1,
+                        'is_primary': False,
+                    },
+                    {
+                        'id': second_image.id,
+                        'sort_order': 0,
+                        'is_primary': True,
+                    },
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        first_image.refresh_from_db()
+        second_image.refresh_from_db()
+        self.assertFalse(first_image.is_primary)
+        self.assertTrue(second_image.is_primary)
+
+    def test_reorder_rejects_duplicate_sort_orders(self):
+        first_image = self.create_product_image(0)
+        second_image = self.create_product_image(1)
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.patch(
+            self.url,
+            {
+                'images': [
+                    {'id': first_image.id, 'sort_order': 0},
+                    {'id': second_image.id, 'sort_order': 0},
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('sort_order', response.data)
+
+    def test_reorder_rejects_images_from_other_product(self):
+        other_product = Product.all_objects.create(
+            tenant=self.tenant,
+            name='MacBook Pro',
+            slug='macbook-pro',
+            sku='MBP-001',
+            brand=self.brand,
+            category=self.category,
+            status='active',
+            base_price='1499.00',
+            tech_specs={'cpu': 'M3 Pro'},
+        )
+        other_image = ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=other_product,
+            image='products/images/other.gif',
+            sort_order=0,
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.patch(
+            self.url,
+            {'images': [{'id': other_image.id, 'sort_order': 0}]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('images', response.data)
+
+    def test_non_vendor_cannot_reorder_product_images(self):
+        product_image = self.create_product_image(0)
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.patch(
+            self.url,
+            {'images': [{'id': product_image.id, 'sort_order': 1}]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

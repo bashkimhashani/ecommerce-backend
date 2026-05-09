@@ -1,8 +1,9 @@
+from django.db import transaction
 from django.db.models import Max
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.serializers import ValidationError
@@ -11,7 +12,11 @@ from rest_framework.views import APIView
 from users.permissions import IsVendorAdmin
 
 from .models import Category, Product, ProductImage
-from .serializers import CategoryTreeSerializer, ProductImageSerializer
+from .serializers import (
+    CategoryTreeSerializer,
+    ProductImageBulkUpdateSerializer,
+    ProductImageSerializer,
+)
 
 
 class CategoryTreeView(APIView):
@@ -37,7 +42,7 @@ class CategoryTreeView(APIView):
 
 class ProductImageUploadView(APIView):
     permission_classes = [IsVendorAdmin]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     @extend_schema(
         request=ProductImageSerializer,
@@ -92,3 +97,108 @@ class ProductImageUploadView(APIView):
             response_serializer.data,
             status=status.HTTP_201_CREATED,
         )
+
+    @extend_schema(
+        request=ProductImageBulkUpdateSerializer,
+        responses=ProductImageSerializer(many=True),
+        tags=['Catalog'],
+    )
+    def patch(self, request, slug):
+        product = get_object_or_404(
+            Product.all_objects,
+            slug=slug,
+            tenant=request.user.tenant,
+        )
+        serializer = ProductImageBulkUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        image_updates = serializer.validated_data['images']
+        image_ids = [image_update['id'] for image_update in image_updates]
+        sort_orders = [
+            image_update['sort_order'] for image_update in image_updates
+        ]
+
+        if len(image_ids) != len(set(image_ids)):
+            raise ValidationError({
+                'images': 'Each image can only be included once.',
+            })
+        if len(sort_orders) != len(set(sort_orders)):
+            raise ValidationError({
+                'sort_order': 'Each sort order can only be used once.',
+            })
+
+        product_images = {
+            product_image.id: product_image
+            for product_image in ProductImage.all_objects.filter(
+                product=product,
+                tenant=request.user.tenant,
+                id__in=image_ids,
+            )
+        }
+        if len(product_images) != len(image_ids):
+            raise ValidationError({
+                'images': 'One or more images do not belong to this product.',
+            })
+
+        sort_order_conflict = ProductImage.all_objects.filter(
+            product=product,
+            tenant=request.user.tenant,
+            sort_order__in=sort_orders,
+        ).exclude(id__in=image_ids).exists()
+        if sort_order_conflict:
+            raise ValidationError({
+                'sort_order': 'One or more sort orders are already in use.',
+            })
+
+        primary_updates = [
+            image_update for image_update in image_updates
+            if image_update.get('is_primary') is True
+        ]
+        if len(primary_updates) > 1:
+            raise ValidationError({
+                'is_primary': 'Only one image can be primary.',
+            })
+
+        existing_max_sort_order = ProductImage.all_objects.filter(
+            product=product,
+            tenant=request.user.tenant,
+        ).aggregate(max_sort_order=Max('sort_order'))['max_sort_order'] or 0
+        temporary_sort_order = max(existing_max_sort_order, max(sort_orders))
+
+        with transaction.atomic():
+            for offset, image_update in enumerate(image_updates, start=1):
+                product_image = product_images[image_update['id']]
+                product_image.sort_order = temporary_sort_order + offset
+                product_image.save(update_fields=['sort_order'])
+
+            if primary_updates:
+                ProductImage.all_objects.filter(
+                    product=product,
+                    tenant=request.user.tenant,
+                    is_primary=True,
+                ).update(is_primary=False)
+
+            for image_update in image_updates:
+                product_image = product_images[image_update['id']]
+                update_fields = ['sort_order']
+                product_image.sort_order = image_update['sort_order']
+
+                if 'alt_text' in image_update:
+                    product_image.alt_text = image_update['alt_text']
+                    update_fields.append('alt_text')
+                if 'is_primary' in image_update:
+                    product_image.is_primary = image_update['is_primary']
+                    update_fields.append('is_primary')
+
+                product_image.save(update_fields=update_fields)
+
+        updated_images = ProductImage.all_objects.filter(
+            product=product,
+            tenant=request.user.tenant,
+        ).order_by('sort_order', 'id')
+        response_serializer = ProductImageSerializer(
+            updated_images,
+            many=True,
+            context={'request': request},
+        )
+        return Response(response_serializer.data)
