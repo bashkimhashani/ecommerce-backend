@@ -1433,6 +1433,43 @@ class ProductDetailEndpointTests(APITestCase):
         self.assertEqual(timeout, 600)
         self.assertTrue(callable(default))
 
+    def test_product_detail_cache_hit_reuses_cached_response(self):
+        first_response = self.client.get(self.url)
+        Product.all_objects.filter(id=self.product.id).update(
+            name='Updated without invalidation',
+        )
+
+        second_response = self.client.get(self.url)
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_response.data['name'], 'MacBook Pro 14')
+        self.assertEqual(second_response.data['name'], 'MacBook Pro 14')
+
+    def test_product_detail_cache_miss_returns_fresh_response(self):
+        self.client.get(self.url)
+        Product.all_objects.filter(id=self.product.id).update(
+            name='Updated after cache clear',
+        )
+        cache.clear()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], 'Updated after cache clear')
+
+    def test_product_update_invalidates_cached_detail_response(self):
+        first_response = self.client.get(self.url)
+        self.product.name = 'Updated by save'
+        self.product.save(update_fields=['name'])
+
+        second_response = self.client.get(self.url)
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_response.data['name'], 'MacBook Pro 14')
+        self.assertEqual(second_response.data['name'], 'Updated by save')
+
     def test_product_detail_endpoint_returns_404_for_inactive_product(self):
         draft_product = Product.all_objects.create(
             tenant=self.tenant,
