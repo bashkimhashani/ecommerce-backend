@@ -938,6 +938,69 @@ class ProductSearchEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(self.response_slugs(response), ['dell-xps-search'])
 
+    def test_product_search_endpoint_filters_without_query(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                'brand': self.dell.slug,
+                'category': self.monitors.slug,
+                'max_price': '500',
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.response_slugs(response),
+            ['dell-ultrasharp-search'],
+        )
+
+    def test_product_search_endpoint_returns_empty_for_conflicting_filters(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                'q': 'dell',
+                'brand': self.apple.slug,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['results'], [])
+        self.assertIsNone(response.data['next'])
+        self.assertIsNone(response.data['previous'])
+
+    def test_product_search_endpoint_filters_by_out_of_stock_products(self):
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.dell_laptop,
+            variant_price='1499.00',
+            stock_quantity=4,
+        )
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.dell_monitor,
+            variant_price='399.00',
+            stock_quantity=0,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                'q': 'dell',
+                'is_in_stock': 'false',
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.response_slugs(response),
+            ['dell-ultrasharp-search'],
+        )
+
     def test_product_search_endpoint_returns_brand_and_price_range_facets(self):
         self.client.force_authenticate(user=self.user)
 
