@@ -338,6 +338,143 @@ class CategoryTreeEndpointTests(APITestCase):
         self.assertIsInstance(response.data, list)
 
 
+class ProductListEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store-products',
+            domain='products.acme.example.com',
+            plan='basic',
+        )
+        self.user = User.objects.create_user(
+            email='product-vendor@example.com',
+            password='StrongPass123',
+            first_name='Product',
+            last_name='Vendor',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        self.brand = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple-products',
+        )
+        self.category = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops-products',
+        )
+        self.url = reverse('product-list')
+
+    def create_product(self, **overrides):
+        defaults = {
+            'tenant': self.tenant,
+            'name': 'MacBook Air',
+            'slug': 'macbook-air-list',
+            'sku': 'MBA-LIST-001',
+            'brand': self.brand,
+            'category': self.category,
+            'status': Product.Status.ACTIVE,
+            'base_price': '999.00',
+            'tech_specs': {'cpu': 'M3'},
+        }
+        defaults.update(overrides)
+        return Product.all_objects.create(**defaults)
+
+    def test_product_list_endpoint_returns_active_products(self):
+        active_product = self.create_product()
+        self.create_product(
+            name='Draft MacBook',
+            slug='draft-macbook-list',
+            sku='DRAFT-LIST-001',
+            status=Product.Status.DRAFT,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], active_product.id)
+        self.assertEqual(response.data[0]['name'], 'MacBook Air')
+        self.assertEqual(response.data[0]['price'], '999.00')
+
+    def test_product_list_endpoint_response_uses_lightweight_shape(self):
+        self.create_product()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            set(response.data[0].keys()),
+            {
+                'id',
+                'name',
+                'slug',
+                'price',
+                'thumbnail',
+                'avg_rating',
+            },
+        )
+
+    def test_product_list_endpoint_scopes_authenticated_user_to_tenant(self):
+        own_product = self.create_product()
+        other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store-products',
+            domain='products.other.example.com',
+            plan='basic',
+        )
+        other_brand = Brand.all_objects.create(
+            tenant=other_tenant,
+            name='Dell',
+            slug='dell-products',
+        )
+        other_category = Category.all_objects.create(
+            tenant=other_tenant,
+            name='Laptops',
+            slug='other-laptops-products',
+        )
+        self.create_product(
+            tenant=other_tenant,
+            name='Dell XPS',
+            slug='dell-xps-list',
+            sku='DXPS-LIST-001',
+            brand=other_brand,
+            category=other_category,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [product['id'] for product in response.data],
+            [own_product.id],
+        )
+
+    def test_product_list_endpoint_returns_thumbnail_url(self):
+        product = self.create_product()
+        ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=product,
+            image='products/images/macbook.jpg',
+            thumbnail='products/images/generated/macbook_thumbnail.jpg',
+            sort_order=0,
+            is_primary=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data[0]['thumbnail'],
+            'http://testserver/media/products/images/generated/'
+            'macbook_thumbnail.jpg',
+        )
+
+
 class ProductImageUploadEndpointTests(APITestCase):
     def setUp(self):
         self.media_root = tempfile.mkdtemp()

@@ -14,6 +14,7 @@ from users.permissions import IsVendorAdmin
 from .models import Category, Product, ProductImage
 from .serializers import (
     CategoryTreeSerializer,
+    ProductListSerializer,
     ProductImageBulkUpdateSerializer,
     ProductImageSerializer,
 )
@@ -37,6 +38,28 @@ class CategoryTreeView(APIView):
 
         categories = categories.order_by('tree_id', 'lft')
         serializer = CategoryTreeSerializer(categories, many=True)
+        return Response(serializer.data)
+
+
+class ProductListView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        responses=ProductListSerializer(many=True),
+        tags=['Catalog'],
+    )
+    def get(self, request):
+        products = Product.all_objects.filter(status=Product.Status.ACTIVE)
+
+        if request.user.is_authenticated and request.user.tenant_id:
+            products = products.filter(tenant=request.user.tenant)
+
+        products = products.order_by('name', 'id')
+        serializer = ProductListSerializer(
+            products,
+            many=True,
+            context={'request': request},
+        )
         return Response(serializer.data)
 
 

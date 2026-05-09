@@ -4,6 +4,7 @@ from .views import (
     CategoryTreeView,
     ProductImageDeleteView,
     ProductImageUploadView,
+    ProductListView,
 )
 
 
@@ -12,6 +13,11 @@ urlpatterns = [
         'categories/tree/',
         CategoryTreeView.as_view(),
         name='category-tree',
+    ),
+    path(
+        'products/',
+        ProductListView.as_view(),
+        name='product-list',
     ),
     path(
         'products/<slug:slug>/images/',
