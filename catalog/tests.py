@@ -773,6 +773,191 @@ class ProductListEndpointTests(APITestCase):
         self.assertIsNotNone(second_response.data['previous'])
 
 
+class ProductSearchEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store-search',
+            domain='search.acme.example.com',
+            plan='basic',
+        )
+        self.user = User.objects.create_user(
+            email='search-vendor@example.com',
+            password='StrongPass123',
+            first_name='Search',
+            last_name='Vendor',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        self.apple = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple-search',
+        )
+        self.dell = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Dell',
+            slug='dell-search',
+        )
+        self.laptops = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops-search',
+        )
+        self.monitors = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Monitors',
+            slug='monitors-search',
+        )
+        self.macbook = self.create_product(
+            name='MacBook Air',
+            slug='macbook-air-search',
+            sku='MBA-SEARCH-001',
+            brand=self.apple,
+            category=self.laptops,
+            base_price='999.00',
+        )
+        self.dell_laptop = self.create_product(
+            name='Dell XPS',
+            slug='dell-xps-search',
+            sku='DXPS-SEARCH-001',
+            brand=self.dell,
+            category=self.laptops,
+            base_price='1499.00',
+        )
+        self.dell_monitor = self.create_product(
+            name='Dell UltraSharp',
+            slug='dell-ultrasharp-search',
+            sku='DU-SEARCH-001',
+            brand=self.dell,
+            category=self.monitors,
+            base_price='399.00',
+        )
+        self.create_product(
+            name='Draft MacBook',
+            slug='draft-macbook-search',
+            sku='DRAFT-SEARCH-001',
+            brand=self.apple,
+            category=self.laptops,
+            status=Product.Status.DRAFT,
+            base_price='899.00',
+        )
+        self.url = reverse('product-search')
+
+    def create_product(self, **overrides):
+        defaults = {
+            'tenant': self.tenant,
+            'status': Product.Status.ACTIVE,
+            'tech_specs': {},
+        }
+        defaults.update(overrides)
+        return Product.all_objects.create(**defaults)
+
+    def response_slugs(self, response):
+        return [product['slug'] for product in response.data['results']]
+
+    def test_product_search_endpoint_matches_query(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url, {'q': 'macbook'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.response_slugs(response), ['macbook-air-search'])
+        self.assertEqual(
+            set(response.data['results'][0].keys()),
+            {
+                'id',
+                'name',
+                'slug',
+                'price',
+                'thumbnail',
+                'avg_rating',
+            },
+        )
+
+    def test_product_search_endpoint_matches_brand_and_category(self):
+        self.client.force_authenticate(user=self.user)
+
+        brand_response = self.client.get(self.url, {'q': 'dell'})
+        category_response = self.client.get(self.url, {'q': 'monitors'})
+
+        self.assertEqual(brand_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.response_slugs(brand_response),
+            ['dell-xps-search', 'dell-ultrasharp-search'],
+        )
+        self.assertEqual(category_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.response_slugs(category_response),
+            ['dell-ultrasharp-search'],
+        )
+
+    def test_product_search_endpoint_applies_product_filters(self):
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.dell_laptop,
+            variant_price='1499.00',
+            stock_quantity=4,
+        )
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.dell_monitor,
+            variant_price='399.00',
+            stock_quantity=0,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                'q': 'dell',
+                'brand': self.dell.slug,
+                'category': self.laptops.slug,
+                'min_price': '1000',
+                'max_price': '2000',
+                'is_in_stock': 'true',
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.response_slugs(response), ['dell-xps-search'])
+
+    def test_product_search_endpoint_scopes_authenticated_user_to_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store-search',
+            domain='search.other.example.com',
+            plan='basic',
+        )
+        other_brand = Brand.all_objects.create(
+            tenant=other_tenant,
+            name='Apple',
+            slug='apple-other-search',
+        )
+        other_category = Category.all_objects.create(
+            tenant=other_tenant,
+            name='Laptops',
+            slug='laptops-other-search',
+        )
+        Product.all_objects.create(
+            tenant=other_tenant,
+            name='MacBook Pro Other',
+            slug='macbook-pro-other-search',
+            sku='MBP-OTHER-SEARCH-001',
+            brand=other_brand,
+            category=other_category,
+            status=Product.Status.ACTIVE,
+            base_price='1999.00',
+            tech_specs={},
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url, {'q': 'macbook'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.response_slugs(response), ['macbook-air-search'])
+
+
 class ProductCreateEndpointTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(

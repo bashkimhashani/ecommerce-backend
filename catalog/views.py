@@ -2,9 +2,13 @@ from hashlib import md5
 
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Max, Prefetch
+from django.db.models import Max, Prefetch, Q
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -14,6 +18,7 @@ from rest_framework.views import APIView
 
 from users.permissions import IsVendorAdmin
 
+from .filters import ProductFilter
 from .models import Category, Product, ProductImage
 from .pagination import ProductCursorPagination
 from .serializers import (
@@ -138,6 +143,81 @@ class ProductListView(VendorWritePermissionMixin, APIView):
             response_serializer.data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class ProductSearchView(APIView):
+    permission_classes = [AllowAny]
+    pagination_class = ProductCursorPagination
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name='q',
+                type=str,
+                required=False,
+                description=(
+                    'Search term for product name, SKU, brand, or category.'
+                ),
+            ),
+        ],
+        responses=inline_serializer(
+            name='PaginatedProductSearchResponse',
+            fields={
+                'next': serializers.URLField(allow_null=True),
+                'previous': serializers.URLField(allow_null=True),
+                'results': ProductListSerializer(many=True),
+            },
+        ),
+        tags=['Catalog'],
+    )
+    def get(self, request):
+        product_images = ProductImage.all_objects.only(
+            'id',
+            'product_id',
+            'thumbnail',
+            'is_primary',
+            'sort_order',
+        ).order_by('-is_primary', 'sort_order', 'id')
+        products = Product.all_objects.filter(
+            status=Product.Status.ACTIVE,
+        ).select_related(
+            'brand',
+            'category',
+        ).prefetch_related(
+            Prefetch('images', queryset=product_images),
+        )
+
+        if request.user.is_authenticated and request.user.tenant_id:
+            products = products.filter(tenant_id=request.user.tenant_id)
+
+        query = request.query_params.get('q', '').strip()
+        if query:
+            products = products.filter(
+                Q(name__icontains=query)
+                | Q(sku__icontains=query)
+                | Q(brand__name__icontains=query)
+                | Q(category__name__icontains=query)
+            )
+
+        product_filter = ProductFilter(
+            data=request.query_params,
+            queryset=products,
+        )
+        if not product_filter.is_valid():
+            raise ValidationError(product_filter.errors)
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(
+            product_filter.qs,
+            request,
+            view=self,
+        )
+        serializer = ProductListSerializer(
+            page,
+            many=True,
+            context={'request': request},
+        )
+        return paginator.get_paginated_response(serializer.data)
 
 
 class ProductDetailView(VendorWritePermissionMixin, APIView):
