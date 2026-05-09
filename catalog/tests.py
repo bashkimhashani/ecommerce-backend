@@ -474,6 +474,33 @@ class ProductListEndpointTests(APITestCase):
             'macbook_thumbnail.jpg',
         )
 
+    def test_product_list_endpoint_prefetches_images_without_n_plus_one(self):
+        for product_number in range(5):
+            product = self.create_product(
+                name=f'MacBook Air {product_number}',
+                slug=f'macbook-air-list-{product_number}',
+                sku=f'MBA-LIST-{product_number}',
+            )
+            ProductImage.all_objects.create(
+                tenant=self.tenant,
+                product=product,
+                image=f'products/images/macbook-{product_number}.jpg',
+                thumbnail=(
+                    'products/images/generated/'
+                    f'macbook-{product_number}_thumbnail.jpg'
+                ),
+                sort_order=0,
+                is_primary=True,
+            )
+        self.client.force_authenticate(user=self.user)
+
+        with self.assertNumQueries(2):
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 5)
+        self.assertTrue(all(product['thumbnail'] for product in response.data))
+
 
 class ProductImageUploadEndpointTests(APITestCase):
     def setUp(self):

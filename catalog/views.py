@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Prefetch
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
@@ -49,10 +49,24 @@ class ProductListView(APIView):
         tags=['Catalog'],
     )
     def get(self, request):
-        products = Product.all_objects.filter(status=Product.Status.ACTIVE)
+        product_images = ProductImage.all_objects.only(
+            'id',
+            'product_id',
+            'thumbnail',
+            'is_primary',
+            'sort_order',
+        ).order_by('-is_primary', 'sort_order', 'id')
+        products = Product.all_objects.filter(
+            status=Product.Status.ACTIVE,
+        ).select_related(
+            'brand',
+            'category',
+        ).prefetch_related(
+            Prefetch('images', queryset=product_images),
+        )
 
         if request.user.is_authenticated and request.user.tenant_id:
-            products = products.filter(tenant=request.user.tenant)
+            products = products.filter(tenant_id=request.user.tenant_id)
 
         products = products.order_by('name', 'id')
         serializer = ProductListSerializer(
