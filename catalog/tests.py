@@ -96,3 +96,57 @@ class CategoryTreeEndpointTests(APITestCase):
             [category['slug'] for category in response.data],
             ['accessories'],
         )
+
+    def test_category_tree_excludes_inactive_root_categories(self):
+        Category.all_objects.create(
+            tenant=self.tenant,
+            name='Active Root',
+            slug='active-root',
+        )
+        Category.all_objects.create(
+            tenant=self.tenant,
+            name='Inactive Root',
+            slug='inactive-root',
+            is_active=False,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [category['slug'] for category in response.data],
+            ['active-root'],
+        )
+
+    def test_category_tree_response_contains_expected_fields(self):
+        Category.all_objects.create(
+            tenant=self.tenant,
+            name='Monitors',
+            slug='monitors',
+            icon_url='https://example.com/icons/monitors.svg',
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            set(response.data[0].keys()),
+            {
+                'id',
+                'name',
+                'slug',
+                'icon_url',
+                'is_active',
+                'children',
+            },
+        )
+        self.assertEqual(response.data[0]['slug'], 'monitors')
+        self.assertEqual(response.data[0]['children'], [])
+
+    def test_category_tree_endpoint_allows_anonymous_customers(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
