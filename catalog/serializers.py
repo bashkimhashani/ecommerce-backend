@@ -167,6 +167,75 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         return getattr(obj, 'avg_rating', None)
 
 
+class ProductCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = [
+            'id',
+            'name',
+            'slug',
+            'sku',
+            'brand',
+            'category',
+            'status',
+            'base_price',
+            'tech_specs',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        tenant = getattr(getattr(request, 'user', None), 'tenant', None)
+
+        if tenant:
+            self.fields['brand'].queryset = Brand.all_objects.filter(
+                tenant=tenant,
+            )
+            self.fields['category'].queryset = Category.all_objects.filter(
+                tenant=tenant,
+            )
+        else:
+            self.fields['brand'].queryset = Brand.all_objects.none()
+            self.fields['category'].queryset = Category.all_objects.none()
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        tenant = getattr(getattr(request, 'user', None), 'tenant', None)
+
+        if tenant is None:
+            raise serializers.ValidationError(
+                'A tenant is required to create products.',
+            )
+
+        slug = attrs.get('slug')
+        sku = attrs.get('sku')
+        errors = {}
+
+        if slug and Product.all_objects.filter(
+            tenant=tenant,
+            slug=slug,
+        ).exists():
+            errors['slug'] = 'A product with this slug already exists.'
+
+        if sku and Product.all_objects.filter(
+            tenant=tenant,
+            sku=sku,
+        ).exists():
+            errors['sku'] = 'A product with this SKU already exists.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return attrs
+
+
 class ProductImageBulkUpdateItemSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     sort_order = serializers.IntegerField(min_value=0)

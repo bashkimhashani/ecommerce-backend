@@ -15,6 +15,7 @@ from .models import Category, Product, ProductImage
 from .pagination import ProductCursorPagination
 from .serializers import (
     CategoryTreeSerializer,
+    ProductCreateSerializer,
     ProductDetailSerializer,
     ProductListSerializer,
     ProductImageBulkUpdateSerializer,
@@ -46,6 +47,11 @@ class CategoryTreeView(APIView):
 class ProductListView(APIView):
     permission_classes = [AllowAny]
     pagination_class = ProductCursorPagination
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsVendorAdmin()]
+        return [permission() for permission in self.permission_classes]
 
     @extend_schema(
         responses=inline_serializer(
@@ -86,6 +92,27 @@ class ProductListView(APIView):
             context={'request': request},
         )
         return paginator.get_paginated_response(serializer.data)
+
+    @extend_schema(
+        request=ProductCreateSerializer,
+        responses={status.HTTP_201_CREATED: ProductDetailSerializer},
+        tags=['Catalog'],
+    )
+    def post(self, request):
+        serializer = ProductCreateSerializer(
+            data=request.data,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save(tenant=request.user.tenant)
+        response_serializer = ProductDetailSerializer(
+            product,
+            context={'request': request},
+        )
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ProductDetailView(APIView):

@@ -552,6 +552,143 @@ class ProductListEndpointTests(APITestCase):
         self.assertIsNotNone(second_response.data['previous'])
 
 
+class ProductCreateEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store-create',
+            domain='create.acme.example.com',
+            plan='basic',
+        )
+        self.vendor = User.objects.create_user(
+            email='create-vendor@example.com',
+            password='StrongPass123',
+            first_name='Create',
+            last_name='Vendor',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        self.customer = User.objects.create_user(
+            email='create-customer@example.com',
+            password='StrongPass123',
+            first_name='Create',
+            last_name='Customer',
+            role='customer',
+            tenant=self.tenant,
+        )
+        self.brand = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple-create',
+        )
+        self.category = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops-create',
+        )
+        self.url = reverse('product-list')
+
+    def product_payload(self, **overrides):
+        payload = {
+            'name': 'MacBook Air 15',
+            'slug': 'macbook-air-15-create',
+            'sku': 'MBA15-CREATE-001',
+            'brand': self.brand.id,
+            'category': self.category.id,
+            'status': Product.Status.ACTIVE,
+            'base_price': '1299.00',
+            'tech_specs': {
+                'cpu': 'M3',
+                'ram': '16GB',
+                'storage': '512GB SSD',
+            },
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_vendor_can_create_product(self):
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        product = Product.all_objects.get(slug='macbook-air-15-create')
+        self.assertEqual(product.tenant, self.tenant)
+        self.assertEqual(product.brand, self.brand)
+        self.assertEqual(product.category, self.category)
+        self.assertEqual(product.sku, 'MBA15-CREATE-001')
+        self.assertEqual(product.tech_specs['ram'], '16GB')
+        self.assertEqual(response.data['slug'], product.slug)
+        self.assertEqual(response.data['brand']['id'], self.brand.id)
+        self.assertEqual(response.data['category']['id'], self.category.id)
+        self.assertEqual(response.data['specs']['storage'], '512GB SSD')
+
+    def test_non_vendor_cannot_create_product(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(
+            Product.all_objects.filter(slug='macbook-air-15-create').exists()
+        )
+
+    def test_create_rejects_brand_from_other_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store-create',
+            domain='create.other.example.com',
+            plan='basic',
+        )
+        other_brand = Brand.all_objects.create(
+            tenant=other_tenant,
+            name='Dell',
+            slug='dell-create',
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(brand=other_brand.id),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('brand', response.data)
+
+    def test_create_rejects_duplicate_slug_and_sku_for_tenant(self):
+        Product.all_objects.create(
+            tenant=self.tenant,
+            name='Existing Product',
+            slug='macbook-air-15-create',
+            sku='MBA15-CREATE-001',
+            brand=self.brand,
+            category=self.category,
+            status=Product.Status.ACTIVE,
+            base_price='1299.00',
+            tech_specs={'cpu': 'M3'},
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('slug', response.data)
+        self.assertIn('sku', response.data)
+
+
 class ProductDetailEndpointTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
