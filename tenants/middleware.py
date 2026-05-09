@@ -25,5 +25,10 @@ class TenantMiddleware:
         request.tenant = tenant
         _thread_locals.tenant = tenant
 
-        response = self.get_response(request)
+        try:
+            response = self.get_response(request)
+        finally:
+            if hasattr(_thread_locals, 'tenant'):
+                delattr(_thread_locals, 'tenant')
+
         return response
