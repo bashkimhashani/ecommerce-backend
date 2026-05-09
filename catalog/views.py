@@ -1,8 +1,9 @@
 from hashlib import md5
 
 from django.core.cache import cache
+from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db import transaction
-from django.db.models import Max, Prefetch, Q
+from django.db.models import Max, Prefetch
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -192,11 +193,19 @@ class ProductSearchView(APIView):
 
         query = request.query_params.get('q', '').strip()
         if query:
-            products = products.filter(
-                Q(name__icontains=query)
-                | Q(sku__icontains=query)
-                | Q(brand__name__icontains=query)
-                | Q(category__name__icontains=query)
+            search_vector = (
+                SearchVector('name', weight='A')
+                + SearchVector('description', weight='B')
+            )
+            search_query = SearchQuery(query)
+            products = products.annotate(
+                search=search_vector,
+                search_rank=SearchRank(search_vector, search_query),
+            ).filter(
+                search=search_query,
+            ).order_by(
+                '-search_rank',
+                'id',
             )
 
         product_filter = ProductFilter(

@@ -831,6 +831,7 @@ class ProductSearchEndpointTests(APITestCase):
             sku='DU-SEARCH-001',
             brand=self.dell,
             category=self.monitors,
+            description='Professional 4K display for color accurate work.',
             base_price='399.00',
         )
         self.create_product(
@@ -875,20 +876,20 @@ class ProductSearchEndpointTests(APITestCase):
             },
         )
 
-    def test_product_search_endpoint_matches_brand_and_category(self):
+    def test_product_search_endpoint_matches_name_and_description(self):
         self.client.force_authenticate(user=self.user)
 
-        brand_response = self.client.get(self.url, {'q': 'dell'})
-        category_response = self.client.get(self.url, {'q': 'monitors'})
+        name_response = self.client.get(self.url, {'q': 'dell'})
+        description_response = self.client.get(self.url, {'q': 'display'})
 
-        self.assertEqual(brand_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(name_response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            self.response_slugs(brand_response),
+            self.response_slugs(name_response),
             ['dell-xps-search', 'dell-ultrasharp-search'],
         )
-        self.assertEqual(category_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(description_response.status_code, status.HTTP_200_OK)
         self.assertEqual(
-            self.response_slugs(category_response),
+            self.response_slugs(description_response),
             ['dell-ultrasharp-search'],
         )
 
