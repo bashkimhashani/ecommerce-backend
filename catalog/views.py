@@ -3,7 +3,7 @@ from hashlib import md5
 from django.core.cache import cache
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db import transaction
-from django.db.models import Max, Prefetch
+from django.db.models import Count, Max, Prefetch
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -149,6 +149,42 @@ class ProductListView(VendorWritePermissionMixin, APIView):
 class ProductSearchView(APIView):
     permission_classes = [AllowAny]
     pagination_class = ProductCursorPagination
+    price_ranges = [
+        {
+            'key': 'under_500',
+            'label': 'Under $500',
+            'min': None,
+            'max': 500,
+            'filters': {'base_price__lt': 500},
+        },
+        {
+            'key': '500_999',
+            'label': '$500 - $999',
+            'min': 500,
+            'max': 999,
+            'filters': {
+                'base_price__gte': 500,
+                'base_price__lt': 1000,
+            },
+        },
+        {
+            'key': '1000_1999',
+            'label': '$1,000 - $1,999',
+            'min': 1000,
+            'max': 1999,
+            'filters': {
+                'base_price__gte': 1000,
+                'base_price__lt': 2000,
+            },
+        },
+        {
+            'key': '2000_plus',
+            'label': '$2,000+',
+            'min': 2000,
+            'max': None,
+            'filters': {'base_price__gte': 2000},
+        },
+    ]
 
     @extend_schema(
         parameters=[
@@ -167,6 +203,7 @@ class ProductSearchView(APIView):
                 'next': serializers.URLField(allow_null=True),
                 'previous': serializers.URLField(allow_null=True),
                 'results': ProductListSerializer(many=True),
+                'facets': serializers.JSONField(),
             },
         ),
         tags=['Catalog'],
@@ -226,7 +263,41 @@ class ProductSearchView(APIView):
             many=True,
             context={'request': request},
         )
-        return paginator.get_paginated_response(serializer.data)
+        response = paginator.get_paginated_response(serializer.data)
+        response.data['facets'] = self.get_facets(products)
+        return response
+
+    def get_facets(self, products):
+        brands = [
+            {
+                'name': brand['brand__name'],
+                'slug': brand['brand__slug'],
+                'count': brand['count'],
+            }
+            for brand in products.order_by().values(
+                'brand__name',
+                'brand__slug',
+            ).annotate(
+                count=Count('id'),
+            ).order_by(
+                'brand__name',
+            )
+        ]
+        price_ranges = [
+            {
+                'key': price_range['key'],
+                'label': price_range['label'],
+                'min': price_range['min'],
+                'max': price_range['max'],
+                'count': products.filter(**price_range['filters']).count(),
+            }
+            for price_range in self.price_ranges
+        ]
+
+        return {
+            'brands': brands,
+            'price_ranges': price_ranges,
+        }
 
 
 class ProductDetailView(VendorWritePermissionMixin, APIView):

@@ -857,12 +857,27 @@ class ProductSearchEndpointTests(APITestCase):
     def response_slugs(self, response):
         return [product['slug'] for product in response.data['results']]
 
+    def price_range_counts(self, response):
+        return {
+            price_range['key']: price_range['count']
+            for price_range in response.data['facets']['price_ranges']
+        }
+
     def test_product_search_endpoint_matches_query(self):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.get(self.url, {'q': 'macbook'})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            set(response.data.keys()),
+            {
+                'next',
+                'previous',
+                'results',
+                'facets',
+            },
+        )
         self.assertEqual(self.response_slugs(response), ['macbook-air-search'])
         self.assertEqual(
             set(response.data['results'][0].keys()),
@@ -922,6 +937,39 @@ class ProductSearchEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(self.response_slugs(response), ['dell-xps-search'])
+
+    def test_product_search_endpoint_returns_brand_and_price_range_facets(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(
+            self.url,
+            {
+                'q': 'dell',
+                'category': self.laptops.slug,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.response_slugs(response), ['dell-xps-search'])
+        self.assertEqual(
+            response.data['facets']['brands'],
+            [
+                {
+                    'name': 'Dell',
+                    'slug': self.dell.slug,
+                    'count': 2,
+                },
+            ],
+        )
+        self.assertEqual(
+            self.price_range_counts(response),
+            {
+                'under_500': 1,
+                '500_999': 0,
+                '1000_1999': 1,
+                '2000_plus': 0,
+            },
+        )
 
     def test_product_search_endpoint_scopes_authenticated_user_to_tenant(self):
         other_tenant = Tenant.objects.create(
