@@ -11,12 +11,14 @@ from django.urls import reverse
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
+from django_redis import get_redis_connection
 
 from tenants.models import Tenant
 
 from .filters import ProductFilter
 from .models import Brand, Category, Product, ProductImage, ProductVariant
 from .serializers import ProductDetailSerializer, ProductListSerializer
+from .signals import autocomplete_suggestion_key_for_tenant
 
 
 User = get_user_model()
@@ -418,6 +420,108 @@ class ProductCacheInvalidationSignalTests(APITestCase):
 
         self.assertEqual(connection.patterns, self.expected_patterns(product))
         self.assertEqual(len(connection.deleted_keys), 4)
+
+
+class ProductAutocompleteEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store-autocomplete',
+            domain='autocomplete.acme.example.com',
+            plan='basic',
+        )
+        self.other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store-autocomplete',
+            domain='autocomplete.other.example.com',
+            plan='basic',
+        )
+        self.user = User.objects.create_user(
+            email='autocomplete-vendor@example.com',
+            password='StrongPass123',
+            first_name='Autocomplete',
+            last_name='Vendor',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        self.connection = get_redis_connection('default')
+        self.key = autocomplete_suggestion_key_for_tenant(self.tenant.id)
+        self.other_key = autocomplete_suggestion_key_for_tenant(
+            self.other_tenant.id,
+        )
+        self.public_key = autocomplete_suggestion_key_for_tenant(None)
+        self.connection.delete(self.key, self.other_key, self.public_key)
+        self.addCleanup(
+            self.connection.delete,
+            self.key,
+            self.other_key,
+            self.public_key,
+        )
+        self.url = reverse('product-autocomplete')
+
+    def add_suggestions(self, key, *names):
+        self.connection.zadd(key, {name: 0 for name in names})
+
+    def test_autocomplete_returns_tenant_scoped_prefix_matches(self):
+        self.add_suggestions(
+            self.key,
+            'MacBook Air',
+            'MacBook Pro',
+            'Magic Keyboard',
+            'Dell XPS',
+        )
+        self.add_suggestions(self.other_key, 'Mac Studio')
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url, {'q': 'mac'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data,
+            {
+                'suggestions': [
+                    'MacBook Air',
+                    'MacBook Pro',
+                ],
+            },
+        )
+
+    def test_autocomplete_returns_empty_suggestions_for_blank_query(self):
+        self.add_suggestions(self.key, 'MacBook Air')
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url, {'q': ''})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {'suggestions': []})
+
+    def test_autocomplete_uses_public_suggestions_for_anonymous_user(self):
+        self.add_suggestions(self.public_key, 'Public MacBook')
+        self.add_suggestions(self.key, 'Private MacBook')
+
+        response = self.client.get(self.url, {'q': 'public'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {'suggestions': ['Public MacBook']})
+
+    def test_autocomplete_limits_suggestions_to_ten(self):
+        self.add_suggestions(
+            self.key,
+            *[
+                f'Test Product {product_number:02}'
+                for product_number in range(12)
+            ],
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url, {'q': 'test'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['suggestions']), 10)
+        self.assertEqual(
+            response.data['suggestions'][0],
+            'Test Product 00',
+        )
 
 
 class CategoryTreeEndpointTests(APITestCase):

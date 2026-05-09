@@ -16,6 +16,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.serializers import ValidationError
 from rest_framework.views import APIView
+from django_redis import get_redis_connection
 
 from users.permissions import IsVendorAdmin
 
@@ -30,6 +31,7 @@ from .serializers import (
     ProductImageBulkUpdateSerializer,
     ProductImageSerializer,
 )
+from .signals import autocomplete_suggestion_key_for_tenant
 
 
 class VendorWritePermissionMixin:
@@ -60,6 +62,52 @@ class CategoryTreeView(APIView):
         categories = categories.order_by('tree_id', 'lft')
         serializer = CategoryTreeSerializer(categories, many=True)
         return Response(serializer.data)
+
+
+class ProductAutocompleteView(APIView):
+    permission_classes = [AllowAny]
+    max_suggestions = 10
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name='q',
+                type=str,
+                required=False,
+                description='Autocomplete prefix for product name suggestions.',
+            ),
+        ],
+        responses=inline_serializer(
+            name='ProductAutocompleteResponse',
+            fields={
+                'suggestions': serializers.ListField(
+                    child=serializers.CharField(),
+                ),
+            },
+        ),
+        tags=['Catalog'],
+    )
+    def get(self, request):
+        query = request.query_params.get('q', '').strip().lower()
+        if not query:
+            return Response({'suggestions': []})
+
+        tenant_id = getattr(getattr(request, 'user', None), 'tenant_id', None)
+        key = autocomplete_suggestion_key_for_tenant(tenant_id)
+        connection = get_redis_connection('default')
+        suggestions = []
+
+        for raw_suggestion in connection.zrange(key, 0, -1):
+            if isinstance(raw_suggestion, bytes):
+                suggestion = raw_suggestion.decode('utf-8')
+            else:
+                suggestion = raw_suggestion
+            if suggestion.lower().startswith(query):
+                suggestions.append(suggestion)
+            if len(suggestions) >= self.max_suggestions:
+                break
+
+        return Response({'suggestions': suggestions})
 
 
 class ProductListView(VendorWritePermissionMixin, APIView):

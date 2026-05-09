@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     CategoryTreeView,
     ProductDetailView,
+    ProductAutocompleteView,
     ProductImageDeleteView,
     ProductImageUploadView,
     ProductListView,
@@ -15,6 +16,11 @@ urlpatterns = [
         'categories/tree/',
         CategoryTreeView.as_view(),
         name='category-tree',
+    ),
+    path(
+        'autocomplete/',
+        ProductAutocompleteView.as_view(),
+        name='product-autocomplete',
     ),
     path(
         'products/',

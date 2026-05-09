@@ -51,13 +51,17 @@ def invalidate_product_cache(product):
         delete_cache_pattern(pattern)
 
 
-def autocomplete_suggestion_key(product):
+def autocomplete_suggestion_key_for_tenant(tenant_id):
     tenant_scope = (
-        f'tenant:{product.tenant_id}'
-        if product.tenant_id
+        f'tenant:{tenant_id}'
+        if tenant_id
         else 'tenant:public'
     )
     return f'catalog:autocomplete:{tenant_scope}:product-names'
+
+
+def autocomplete_suggestion_key(product):
+    return autocomplete_suggestion_key_for_tenant(product.tenant_id)
 
 
 def store_product_name_suggestion(product):
