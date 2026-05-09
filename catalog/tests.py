@@ -644,6 +644,157 @@ class ProductDetailEndpointTests(APITestCase):
             'MacBook Pro open on desk',
         )
 
+    def test_product_detail_endpoint_response_has_nested_serializer_fields(self):
+        first_variant = ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            color='Space Black',
+            storage='512GB',
+            ram='18GB',
+            variant_price='1999.00',
+            stock_quantity=8,
+        )
+        second_variant = ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            color='Silver',
+            storage='1TB',
+            ram='36GB',
+            variant_price='2499.00',
+            stock_quantity=4,
+        )
+        ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image='products/images/macbook-pro-front.jpg',
+            thumbnail='products/images/generated/front_thumbnail.jpg',
+            medium='products/images/generated/front_medium.jpg',
+            large='products/images/generated/front_large.jpg',
+            alt_text='MacBook Pro front',
+            sort_order=0,
+            is_primary=True,
+        )
+        ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image='products/images/macbook-pro-side.jpg',
+            thumbnail='products/images/generated/side_thumbnail.jpg',
+            medium='products/images/generated/side_medium.jpg',
+            large='products/images/generated/side_large.jpg',
+            alt_text='MacBook Pro side',
+            sort_order=1,
+            is_primary=False,
+        )
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            set(response.data.keys()),
+            {
+                'id',
+                'name',
+                'slug',
+                'sku',
+                'brand',
+                'category',
+                'status',
+                'price',
+                'specs',
+                'variants',
+                'images',
+                'avg_rating',
+                'created_at',
+                'updated_at',
+            },
+        )
+        self.assertEqual(
+            set(response.data['brand'].keys()),
+            {
+                'id',
+                'name',
+                'slug',
+                'logo',
+                'country_of_origin',
+            },
+        )
+        self.assertEqual(
+            set(response.data['category'].keys()),
+            {
+                'id',
+                'name',
+                'slug',
+                'icon_url',
+            },
+        )
+        self.assertEqual(
+            set(response.data['variants'][0].keys()),
+            {
+                'id',
+                'color',
+                'storage',
+                'ram',
+                'variant_price',
+                'stock_quantity',
+            },
+        )
+        self.assertEqual(
+            set(response.data['images'][0].keys()),
+            {
+                'id',
+                'image',
+                'thumbnail',
+                'medium',
+                'large',
+                'alt_text',
+                'sort_order',
+                'is_primary',
+                'created_at',
+                'updated_at',
+            },
+        )
+        self.assertEqual(response.data['specs']['storage'], '512GB SSD')
+        self.assertEqual(
+            [variant['id'] for variant in response.data['variants']],
+            [second_variant.id, first_variant.id],
+        )
+        self.assertEqual(
+            [image['sort_order'] for image in response.data['images']],
+            [0, 1],
+        )
+        self.assertEqual(
+            response.data['images'][0]['large'],
+            'http://testserver/media/products/images/generated/front_large.jpg',
+        )
+
+    def test_product_detail_endpoint_prefetches_nested_serializer_fields(self):
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            color='Space Black',
+            storage='512GB',
+            ram='18GB',
+            variant_price='1999.00',
+            stock_quantity=8,
+        )
+        ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image='products/images/macbook-pro-front.jpg',
+            thumbnail='products/images/generated/front_thumbnail.jpg',
+            medium='products/images/generated/front_medium.jpg',
+            large='products/images/generated/front_large.jpg',
+            sort_order=0,
+            is_primary=True,
+        )
+
+        with self.assertNumQueries(3):
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['variants']), 1)
+        self.assertEqual(len(response.data['images']), 1)
+
     def test_product_detail_endpoint_returns_404_for_inactive_product(self):
         draft_product = Product.all_objects.create(
             tenant=self.tenant,
