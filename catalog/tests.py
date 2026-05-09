@@ -473,3 +473,76 @@ class ProductImageUploadEndpointTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_vendor_can_delete_product_image(self):
+        product_image = self.create_product_image(0)
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.delete(
+            reverse(
+                'product-image-delete',
+                kwargs={
+                    'slug': self.product.slug,
+                    'image_id': product_image.id,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            ProductImage.all_objects.filter(id=product_image.id).exists()
+        )
+
+    def test_non_vendor_cannot_delete_product_image(self):
+        product_image = self.create_product_image(0)
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.delete(
+            reverse(
+                'product-image-delete',
+                kwargs={
+                    'slug': self.product.slug,
+                    'image_id': product_image.id,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(
+            ProductImage.all_objects.filter(id=product_image.id).exists()
+        )
+
+    def test_vendor_cannot_delete_image_from_other_product(self):
+        other_product = Product.all_objects.create(
+            tenant=self.tenant,
+            name='MacBook Pro',
+            slug='macbook-pro-delete',
+            sku='MBP-DELETE-001',
+            brand=self.brand,
+            category=self.category,
+            status='active',
+            base_price='1499.00',
+            tech_specs={'cpu': 'M3 Pro'},
+        )
+        other_image = ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=other_product,
+            image='products/images/other-delete.gif',
+            sort_order=0,
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.delete(
+            reverse(
+                'product-image-delete',
+                kwargs={
+                    'slug': self.product.slug,
+                    'image_id': other_image.id,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(
+            ProductImage.all_objects.filter(id=other_image.id).exists()
+        )

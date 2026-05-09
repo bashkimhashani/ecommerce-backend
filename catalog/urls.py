@@ -1,6 +1,10 @@
 from django.urls import path
 
-from .views import CategoryTreeView, ProductImageUploadView
+from .views import (
+    CategoryTreeView,
+    ProductImageDeleteView,
+    ProductImageUploadView,
+)
 
 
 urlpatterns = [
@@ -13,5 +17,10 @@ urlpatterns = [
         'products/<slug:slug>/images/',
         ProductImageUploadView.as_view(),
         name='product-image-upload',
+    ),
+    path(
+        'products/<slug:slug>/images/<int:image_id>/',
+        ProductImageDeleteView.as_view(),
+        name='product-image-delete',
     ),
 ]

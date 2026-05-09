@@ -202,3 +202,28 @@ class ProductImageUploadView(APIView):
             context={'request': request},
         )
         return Response(response_serializer.data)
+
+
+class ProductImageDeleteView(APIView):
+    permission_classes = [IsVendorAdmin]
+
+    @extend_schema(
+        responses={status.HTTP_204_NO_CONTENT: None},
+        tags=['Catalog'],
+    )
+    def delete(self, request, slug, image_id):
+        product = get_object_or_404(
+            Product.all_objects,
+            slug=slug,
+            tenant=request.user.tenant,
+        )
+        product_image = get_object_or_404(
+            ProductImage.all_objects,
+            id=image_id,
+            product=product,
+            tenant=request.user.tenant,
+        )
+
+        product_image.image.delete(save=False)
+        product_image.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
