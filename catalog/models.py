@@ -126,3 +126,33 @@ class ProductVariant(TenantModel):
             value for value in [self.color, self.storage, self.ram] if value
         )
         return f'{self.product.name} - {options}' if options else self.product.name
+
+
+class ProductImage(TenantModel):
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='images',
+    )
+    image = models.ImageField(upload_to='products/images/')
+    alt_text = models.CharField(max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['sort_order', 'id']
+        indexes = [
+            models.Index(fields=['tenant', 'product', 'sort_order']),
+            models.Index(fields=['tenant', 'product', 'is_primary']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'product', 'sort_order'],
+                name='unique_product_image_sort_order_per_tenant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.product.name} image {self.sort_order}'
