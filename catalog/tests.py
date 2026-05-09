@@ -13,9 +13,96 @@ from rest_framework.test import APITestCase
 from tenants.models import Tenant
 
 from .models import Brand, Category, Product, ProductImage
+from .serializers import ProductListSerializer
 
 
 User = get_user_model()
+
+
+class ProductListSerializerTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store',
+            domain='acme.example.com',
+            plan='basic',
+        )
+        self.brand = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple',
+        )
+        self.category = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops',
+        )
+        self.product = Product.all_objects.create(
+            tenant=self.tenant,
+            name='MacBook Air',
+            slug='macbook-air',
+            sku='MBA-001',
+            brand=self.brand,
+            category=self.category,
+            status='active',
+            base_price='999.00',
+            tech_specs={'cpu': 'M3'},
+        )
+
+    def test_product_list_serializer_returns_lightweight_fields(self):
+        serializer = ProductListSerializer(self.product)
+
+        self.assertEqual(
+            set(serializer.data.keys()),
+            {
+                'id',
+                'name',
+                'slug',
+                'price',
+                'thumbnail',
+                'avg_rating',
+            },
+        )
+        self.assertEqual(serializer.data['name'], 'MacBook Air')
+        self.assertEqual(serializer.data['slug'], 'macbook-air')
+        self.assertEqual(serializer.data['price'], '999.00')
+        self.assertIsNone(serializer.data['thumbnail'])
+        self.assertIsNone(serializer.data['avg_rating'])
+
+    def test_product_list_serializer_uses_primary_thumbnail(self):
+        ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image='products/images/secondary.jpg',
+            thumbnail='products/images/generated/secondary_thumbnail.jpg',
+            sort_order=0,
+            is_primary=False,
+        )
+        ProductImage.all_objects.create(
+            tenant=self.tenant,
+            product=self.product,
+            image='products/images/primary.jpg',
+            thumbnail='products/images/generated/primary_thumbnail.jpg',
+            sort_order=1,
+            is_primary=True,
+        )
+
+        product = Product.all_objects.prefetch_related('images').get(
+            id=self.product.id,
+        )
+        serializer = ProductListSerializer(product)
+
+        self.assertEqual(
+            serializer.data['thumbnail'],
+            '/media/products/images/generated/primary_thumbnail.jpg',
+        )
+
+    def test_product_list_serializer_returns_annotated_average_rating(self):
+        self.product.avg_rating = 4.5
+
+        serializer = ProductListSerializer(self.product)
+
+        self.assertEqual(serializer.data['avg_rating'], 4.5)
 
 
 class CategoryTreeEndpointTests(APITestCase):
