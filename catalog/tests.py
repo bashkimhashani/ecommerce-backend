@@ -14,6 +14,7 @@ from rest_framework.test import APITestCase
 
 from tenants.models import Tenant
 
+from .filters import ProductFilter
 from .models import Brand, Category, Product, ProductImage, ProductVariant
 from .serializers import ProductDetailSerializer, ProductListSerializer
 
@@ -197,6 +198,118 @@ class ProductDetailSerializerTests(APITestCase):
             'MacBook Air front view',
         )
         self.assertTrue(serializer.data['images'][0]['is_primary'])
+
+
+class ProductFilterTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store-filters',
+            domain='filters.acme.example.com',
+            plan='basic',
+        )
+        self.apple = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple-filters',
+        )
+        self.dell = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Dell',
+            slug='dell-filters',
+        )
+        self.laptops = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops-filters',
+        )
+        self.monitors = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Monitors',
+            slug='monitors-filters',
+        )
+        self.macbook = self.create_product(
+            name='MacBook Air',
+            slug='macbook-air-filters',
+            sku='MBA-FILTERS-001',
+            brand=self.apple,
+            category=self.laptops,
+            base_price='999.00',
+        )
+        self.dell_monitor = self.create_product(
+            name='Dell UltraSharp',
+            slug='dell-ultrasharp-filters',
+            sku='DU-FILTERS-001',
+            brand=self.dell,
+            category=self.monitors,
+            base_price='399.00',
+        )
+        self.dell_laptop = self.create_product(
+            name='Dell XPS',
+            slug='dell-xps-filters',
+            sku='DXPS-FILTERS-001',
+            brand=self.dell,
+            category=self.laptops,
+            base_price='1499.00',
+        )
+
+    def create_product(self, **overrides):
+        defaults = {
+            'tenant': self.tenant,
+            'status': Product.Status.ACTIVE,
+            'tech_specs': {},
+        }
+        defaults.update(overrides)
+        return Product.all_objects.create(**defaults)
+
+    def filtered_slugs(self, params):
+        queryset = Product.all_objects.filter(
+            tenant=self.tenant,
+        ).order_by('slug')
+        product_filter = ProductFilter(data=params, queryset=queryset)
+        self.assertTrue(product_filter.is_valid())
+        return list(product_filter.qs.values_list('slug', flat=True))
+
+    def test_product_filter_filters_by_price_range(self):
+        self.assertEqual(
+            self.filtered_slugs({'min_price': '500', 'max_price': '1200'}),
+            ['macbook-air-filters'],
+        )
+
+    def test_product_filter_filters_by_brand_slug(self):
+        self.assertEqual(
+            self.filtered_slugs({'brand': self.dell.slug}),
+            ['dell-ultrasharp-filters', 'dell-xps-filters'],
+        )
+
+    def test_product_filter_filters_by_category_slug(self):
+        self.assertEqual(
+            self.filtered_slugs({'category': self.laptops.slug}),
+            ['dell-xps-filters', 'macbook-air-filters'],
+        )
+
+    def test_product_filter_filters_by_stock_availability(self):
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.macbook,
+            variant_price='999.00',
+            stock_quantity=3,
+        )
+        ProductVariant.all_objects.create(
+            tenant=self.tenant,
+            product=self.dell_laptop,
+            variant_price='1499.00',
+            stock_quantity=0,
+        )
+
+        self.assertEqual(
+            self.filtered_slugs({'is_in_stock': 'true'}),
+            ['macbook-air-filters'],
+        )
+        self.assertEqual(
+            self.filtered_slugs({'is_in_stock': 'false'}),
+            ['dell-ultrasharp-filters', 'dell-xps-filters'],
+        )
 
 
 class FakeRedisConnection:
