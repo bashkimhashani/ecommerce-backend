@@ -33,6 +33,9 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'image',
+            'thumbnail',
+            'medium',
+            'large',
             'alt_text',
             'sort_order',
             'is_primary',
@@ -41,6 +44,9 @@ class ProductImageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'thumbnail',
+            'medium',
+            'large',
             'created_at',
             'updated_at',
         ]

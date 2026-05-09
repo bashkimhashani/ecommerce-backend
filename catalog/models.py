@@ -161,6 +161,24 @@ class ProductImage(TenantModel):
         related_name='images',
     )
     image = models.ImageField(upload_to='products/images/')
+    thumbnail = models.ImageField(
+        upload_to='products/images/generated/',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    medium = models.ImageField(
+        upload_to='products/images/generated/',
+        null=True,
+        blank=True,
+        editable=False,
+    )
+    large = models.ImageField(
+        upload_to='products/images/generated/',
+        null=True,
+        blank=True,
+        editable=False,
+    )
     alt_text = models.CharField(max_length=255, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
     is_primary = models.BooleanField(default=False)

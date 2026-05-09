@@ -224,6 +224,7 @@ class ProductImageDeleteView(APIView):
             tenant=request.user.tenant,
         )
 
-        product_image.image.delete(save=False)
+        for field_name in ['thumbnail', 'medium', 'large', 'image']:
+            getattr(product_image, field_name).delete(save=False)
         product_image.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

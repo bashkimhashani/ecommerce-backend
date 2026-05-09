@@ -1,10 +1,12 @@
 import shutil
 import tempfile
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -213,15 +215,15 @@ class ProductImageUploadEndpointTests(APITestCase):
             kwargs={'slug': self.product.slug},
         )
 
-    def image_upload(self, name='product.gif'):
+    def image_upload(self, name='product.jpg', size=(1600, 1200)):
+        image = Image.new('RGB', size, color='white')
+        output = BytesIO()
+        image.save(output, format='JPEG')
+        output.seek(0)
         return SimpleUploadedFile(
             name,
-            (
-                b'GIF87a\x01\x00\x01\x00\x80\x01\x00\x00\x00\x00'
-                b'\xff\xff\xff,\x00\x00\x00\x00\x01\x00\x01\x00'
-                b'\x00\x02\x02D\x01\x00;'
-            ),
-            content_type='image/gif',
+            output.read(),
+            content_type='image/jpeg',
         )
 
     def test_vendor_can_upload_product_image(self):
@@ -245,6 +247,43 @@ class ProductImageUploadEndpointTests(APITestCase):
         self.assertEqual(product_image.sort_order, 0)
         self.assertTrue(product_image.is_primary)
         self.assertEqual(response.data['id'], product_image.id)
+
+    def test_upload_generates_thumbnail_medium_and_large_images(self):
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            self.url,
+            {'image': self.image_upload()},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        product_image = ProductImage.all_objects.get()
+        self.assertTrue(product_image.thumbnail.name)
+        self.assertTrue(product_image.medium.name)
+        self.assertTrue(product_image.large.name)
+        self.assertTrue(product_image.thumbnail.storage.exists(
+            product_image.thumbnail.name,
+        ))
+        self.assertTrue(product_image.medium.storage.exists(
+            product_image.medium.name,
+        ))
+        self.assertTrue(product_image.large.storage.exists(
+            product_image.large.name,
+        ))
+
+        expected_sizes = [
+            (product_image.thumbnail, (150, 150)),
+            (product_image.medium, (600, 600)),
+            (product_image.large, (1200, 1200)),
+        ]
+        for image_field, max_size in expected_sizes:
+            image_field.open('rb')
+            generated_image = Image.open(image_field)
+            generated_image.load()
+            image_field.close()
+            self.assertLessEqual(generated_image.width, max_size[0])
+            self.assertLessEqual(generated_image.height, max_size[1])
 
     def test_upload_assigns_next_sort_order_when_not_provided(self):
         ProductImage.all_objects.create(
