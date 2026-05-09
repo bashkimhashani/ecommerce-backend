@@ -53,8 +53,8 @@ class Product(TenantModel):
         ARCHIVED = 'archived', 'Archived'
 
     name = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=255)
-    sku = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=255, db_index=True)
+    sku = models.CharField(max_length=100, db_index=True)
     brand = models.ForeignKey(
         Brand,
         on_delete=models.PROTECT,
