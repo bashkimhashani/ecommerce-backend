@@ -641,6 +641,24 @@ class ProductCreateEndpointTests(APITestCase):
             Product.all_objects.filter(slug='macbook-air-15-create').exists()
         )
 
+    def test_anonymous_user_cannot_create_product(self):
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            format='json',
+        )
+
+        self.assertIn(
+            response.status_code,
+            [
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            ],
+        )
+        self.assertFalse(
+            Product.all_objects.filter(slug='macbook-air-15-create').exists()
+        )
+
     def test_create_rejects_brand_from_other_tenant(self):
         other_tenant = Tenant.objects.create(
             name='Other Store',
@@ -663,6 +681,73 @@ class ProductCreateEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('brand', response.data)
+
+    def test_create_rejects_category_from_other_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Category Store',
+            slug='other-category-store-create',
+            domain='create-category.other.example.com',
+            plan='basic',
+        )
+        other_category = Category.all_objects.create(
+            tenant=other_tenant,
+            name='Other Laptops',
+            slug='other-laptops-create',
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(category=other_category.id),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('category', response.data)
+
+    def test_create_allows_same_slug_and_sku_in_different_tenant(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Duplicate Store',
+            slug='other-duplicate-store-create',
+            domain='create-duplicate.other.example.com',
+            plan='basic',
+        )
+        other_brand = Brand.all_objects.create(
+            tenant=other_tenant,
+            name='Dell',
+            slug='dell-duplicate-create',
+        )
+        other_category = Category.all_objects.create(
+            tenant=other_tenant,
+            name='Laptops',
+            slug='other-laptops-duplicate-create',
+        )
+        Product.all_objects.create(
+            tenant=other_tenant,
+            name='Other MacBook Air 15',
+            slug='macbook-air-15-create',
+            sku='MBA15-CREATE-001',
+            brand=other_brand,
+            category=other_category,
+            status=Product.Status.ACTIVE,
+            base_price='1299.00',
+            tech_specs={'cpu': 'M3'},
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            self.url,
+            self.product_payload(),
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        product = Product.all_objects.get(
+            tenant=self.tenant,
+            slug='macbook-air-15-create',
+        )
+        self.assertEqual(product.sku, 'MBA15-CREATE-001')
+        self.assertEqual(product.tenant, self.tenant)
 
     def test_create_rejects_duplicate_slug_and_sku_for_tenant(self):
         Product.all_objects.create(
