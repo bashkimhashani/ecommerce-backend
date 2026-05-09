@@ -1,19 +1,63 @@
+import logging
 from io import BytesIO
 from pathlib import Path
 
 from django.core.files.base import ContentFile
-from django.db.models.signals import post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
+from django_redis import get_redis_connection
 from PIL import Image
 
-from .models import ProductImage
+from .models import Product, ProductImage
 
+
+logger = logging.getLogger(__name__)
 
 IMAGE_SIZES = {
     'thumbnail': (150, 150),
     'medium': (600, 600),
     'large': (1200, 1200),
 }
+
+
+def delete_cache_pattern(pattern):
+    try:
+        connection = get_redis_connection('default')
+        keys = list(connection.scan_iter(match=pattern))
+        if keys:
+            connection.delete(*keys)
+    except Exception:
+        logger.exception(
+            'Failed to invalidate catalog cache pattern: %s',
+            pattern,
+        )
+
+
+def invalidate_product_cache(product):
+    tenant_scope = (
+        f'tenant:{product.tenant_id}'
+        if product.tenant_id
+        else 'tenant:public'
+    )
+    patterns = [
+        f'*catalog:product-list:{tenant_scope}:*',
+        '*catalog:product-list:tenant:public:*',
+        f'*catalog:product-detail:{tenant_scope}:{product.slug}',
+        f'*catalog:product-detail:tenant:public:{product.slug}',
+    ]
+
+    for pattern in patterns:
+        delete_cache_pattern(pattern)
+
+
+@receiver(post_save, sender=Product)
+def invalidate_product_cache_after_save(sender, instance, **kwargs):
+    invalidate_product_cache(instance)
+
+
+@receiver(post_delete, sender=Product)
+def invalidate_product_cache_after_delete(sender, instance, **kwargs):
+    invalidate_product_cache(instance)
 
 
 def build_generated_image_path(original_name, product_image_id, size_name):

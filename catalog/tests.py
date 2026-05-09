@@ -199,6 +199,89 @@ class ProductDetailSerializerTests(APITestCase):
         self.assertTrue(serializer.data['images'][0]['is_primary'])
 
 
+class FakeRedisConnection:
+    def __init__(self):
+        self.patterns = []
+        self.deleted_keys = []
+
+    def scan_iter(self, match):
+        self.patterns.append(match)
+        return [f'cache:{match}'.encode('utf-8')]
+
+    def delete(self, *keys):
+        self.deleted_keys.extend(keys)
+        return len(keys)
+
+
+class ProductCacheInvalidationSignalTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store-cache-signals',
+            domain='cache-signals.acme.example.com',
+            plan='basic',
+        )
+        self.brand = Brand.all_objects.create(
+            tenant=self.tenant,
+            name='Apple',
+            slug='apple-cache-signals',
+        )
+        self.category = Category.all_objects.create(
+            tenant=self.tenant,
+            name='Laptops',
+            slug='laptops-cache-signals',
+        )
+
+    def create_product(self, **overrides):
+        defaults = {
+            'tenant': self.tenant,
+            'name': 'MacBook Air',
+            'slug': 'macbook-air-cache-signals',
+            'sku': 'MBA-CACHE-SIGNALS-001',
+            'brand': self.brand,
+            'category': self.category,
+            'status': Product.Status.ACTIVE,
+            'base_price': '999.00',
+            'tech_specs': {'cpu': 'M3'},
+        }
+        defaults.update(overrides)
+        return Product.all_objects.create(**defaults)
+
+    def expected_patterns(self, product):
+        tenant_scope = f'tenant:{self.tenant.id}'
+        return [
+            f'*catalog:product-list:{tenant_scope}:*',
+            '*catalog:product-list:tenant:public:*',
+            f'*catalog:product-detail:{tenant_scope}:{product.slug}',
+            f'*catalog:product-detail:tenant:public:{product.slug}',
+        ]
+
+    def test_product_post_save_invalidates_list_and_detail_cache_patterns(self):
+        connection = FakeRedisConnection()
+
+        with patch(
+            'catalog.signals.get_redis_connection',
+            return_value=connection,
+        ):
+            product = self.create_product()
+
+        self.assertEqual(connection.patterns, self.expected_patterns(product))
+        self.assertEqual(len(connection.deleted_keys), 4)
+
+    def test_product_post_delete_invalidates_list_and_detail_cache_patterns(self):
+        product = self.create_product()
+        connection = FakeRedisConnection()
+
+        with patch(
+            'catalog.signals.get_redis_connection',
+            return_value=connection,
+        ):
+            product.delete()
+
+        self.assertEqual(connection.patterns, self.expected_patterns(product))
+        self.assertEqual(len(connection.deleted_keys), 4)
+
+
 class CategoryTreeEndpointTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
