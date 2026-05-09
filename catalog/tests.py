@@ -316,6 +316,7 @@ class FakeRedisConnection:
     def __init__(self):
         self.patterns = []
         self.deleted_keys = []
+        self.sorted_set_updates = []
 
     def scan_iter(self, match):
         self.patterns.append(match)
@@ -324,6 +325,10 @@ class FakeRedisConnection:
     def delete(self, *keys):
         self.deleted_keys.extend(keys)
         return len(keys)
+
+    def zadd(self, key, mapping):
+        self.sorted_set_updates.append((key, mapping))
+        return len(mapping)
 
 
 class ProductCacheInvalidationSignalTests(APITestCase):
@@ -380,6 +385,26 @@ class ProductCacheInvalidationSignalTests(APITestCase):
 
         self.assertEqual(connection.patterns, self.expected_patterns(product))
         self.assertEqual(len(connection.deleted_keys), 4)
+
+    def test_product_post_save_stores_name_in_autocomplete_sorted_set(self):
+        connection = FakeRedisConnection()
+
+        with patch(
+            'catalog.signals.get_redis_connection',
+            return_value=connection,
+        ):
+            product = self.create_product()
+
+        self.assertIn(
+            (
+                (
+                    f'catalog:autocomplete:tenant:{self.tenant.id}:'
+                    'product-names'
+                ),
+                {'MacBook Air': 0},
+            ),
+            connection.sorted_set_updates,
+        )
 
     def test_product_post_delete_invalidates_list_and_detail_cache_patterns(self):
         product = self.create_product()

@@ -12,6 +12,7 @@ from .models import Product, ProductImage
 
 
 logger = logging.getLogger(__name__)
+AUTOCOMPLETE_SUGGESTION_SCORE = 0
 
 IMAGE_SIZES = {
     'thumbnail': (150, 150),
@@ -50,9 +51,36 @@ def invalidate_product_cache(product):
         delete_cache_pattern(pattern)
 
 
+def autocomplete_suggestion_key(product):
+    tenant_scope = (
+        f'tenant:{product.tenant_id}'
+        if product.tenant_id
+        else 'tenant:public'
+    )
+    return f'catalog:autocomplete:{tenant_scope}:product-names'
+
+
+def store_product_name_suggestion(product):
+    if not product.name:
+        return
+
+    try:
+        connection = get_redis_connection('default')
+        connection.zadd(
+            autocomplete_suggestion_key(product),
+            {product.name: AUTOCOMPLETE_SUGGESTION_SCORE},
+        )
+    except Exception:
+        logger.exception(
+            'Failed to store product autocomplete suggestion: %s',
+            product.name,
+        )
+
+
 @receiver(post_save, sender=Product)
 def invalidate_product_cache_after_save(sender, instance, **kwargs):
     invalidate_product_cache(instance)
+    store_product_name_suggestion(instance)
 
 
 @receiver(post_delete, sender=Product)
