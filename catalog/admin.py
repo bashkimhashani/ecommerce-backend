@@ -1,4 +1,5 @@
 from django.contrib import admin
+from mptt.admin import DraggableMPTTAdmin
 
 from .models import Brand, Category, Product, ProductImage, ProductVariant
 
@@ -12,10 +13,11 @@ class BrandAdmin(admin.ModelAdmin):
 
 
 @admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'tenant', 'created_at')
+class CategoryAdmin(DraggableMPTTAdmin):
+    list_display = ('tree_actions', 'indented_title', 'slug', 'parent', 'is_active', 'tenant')
+    list_display_links = ('indented_title',)
     search_fields = ('name', 'slug')
-    list_filter = ('tenant',)
+    list_filter = ('is_active', 'tenant')
     prepopulated_fields = {'slug': ('name',)}
 
 

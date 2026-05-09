@@ -1,6 +1,18 @@
 from django.db import models
+from mptt.managers import TreeManager
+from mptt.models import MPTTModel, TreeForeignKey
 
+from tenants.middleware import get_current_tenant
 from tenants.mixins import TenantModel
+
+
+class TenantAwareTreeManager(TreeManager):
+    def get_queryset(self):
+        tenant = get_current_tenant()
+        qs = super().get_queryset()
+        if tenant:
+            return qs.filter(tenant=tenant)
+        return qs
 
 
 class Brand(TenantModel):
@@ -25,16 +37,30 @@ class Brand(TenantModel):
         return self.name
 
 
-class Category(TenantModel):
+class Category(MPTTModel, TenantModel):
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255)
+    parent = TreeForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='children',
+    )
+    icon_url = models.URLField(blank=True)
+    is_active = models.BooleanField(default=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = TenantAwareTreeManager()
+
+    class MPTTMeta:
+        order_insertion_by = ['name']
+
     class Meta:
         verbose_name_plural = 'categories'
-        ordering = ['name']
+        ordering = ['tree_id', 'lft']
         constraints = [
             models.UniqueConstraint(
                 fields=['tenant', 'slug'],
