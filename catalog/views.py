@@ -23,6 +23,15 @@ from .serializers import (
 )
 
 
+class VendorWritePermissionMixin:
+    vendor_write_methods = set()
+
+    def get_permissions(self):
+        if self.request.method in self.vendor_write_methods:
+            return [IsVendorAdmin()]
+        return super().get_permissions()
+
+
 class CategoryTreeView(APIView):
     permission_classes = [AllowAny]
 
@@ -44,14 +53,10 @@ class CategoryTreeView(APIView):
         return Response(serializer.data)
 
 
-class ProductListView(APIView):
+class ProductListView(VendorWritePermissionMixin, APIView):
     permission_classes = [AllowAny]
     pagination_class = ProductCursorPagination
-
-    def get_permissions(self):
-        if self.request.method == 'POST':
-            return [IsVendorAdmin()]
-        return [permission() for permission in self.permission_classes]
+    vendor_write_methods = {'POST'}
 
     @extend_schema(
         responses=inline_serializer(
@@ -115,13 +120,9 @@ class ProductListView(APIView):
         )
 
 
-class ProductDetailView(APIView):
+class ProductDetailView(VendorWritePermissionMixin, APIView):
     permission_classes = [AllowAny]
-
-    def get_permissions(self):
-        if self.request.method in ['PUT', 'DELETE']:
-            return [IsVendorAdmin()]
-        return [permission() for permission in self.permission_classes]
+    vendor_write_methods = {'PUT', 'DELETE'}
 
     @extend_schema(
         responses=ProductDetailSerializer,
