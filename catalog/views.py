@@ -142,13 +142,27 @@ class ProductListView(VendorWritePermissionMixin, APIView):
 
 class ProductDetailView(VendorWritePermissionMixin, APIView):
     permission_classes = [AllowAny]
+    cache_timeout = 600
     vendor_write_methods = {'PUT', 'DELETE'}
+
+    def get_cache_key(self, request, slug):
+        tenant_id = getattr(getattr(request, 'user', None), 'tenant_id', None)
+        tenant_scope = f'tenant:{tenant_id}' if tenant_id else 'tenant:public'
+        return f'catalog:product-detail:{tenant_scope}:{slug}'
 
     @extend_schema(
         responses=ProductDetailSerializer,
         tags=['Catalog'],
     )
     def get(self, request, slug):
+        response_data = cache.get_or_set(
+            self.get_cache_key(request, slug),
+            lambda: self.get_product_detail_data(request, slug),
+            self.cache_timeout,
+        )
+        return Response(response_data)
+
+    def get_product_detail_data(self, request, slug):
         products = Product.all_objects.filter(
             status=Product.Status.ACTIVE,
         ).select_related(
@@ -167,7 +181,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
             product,
             context={'request': request},
         )
-        return Response(serializer.data)
+        return serializer.data
 
     @extend_schema(
         request=ProductCreateSerializer,

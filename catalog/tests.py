@@ -1090,6 +1090,7 @@ class ProductDeleteEndpointTests(APITestCase):
 
 class ProductDetailEndpointTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.tenant = Tenant.objects.create(
             name='Acme Store',
             slug='acme-store-detail',
@@ -1330,6 +1331,24 @@ class ProductDetailEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['variants']), 1)
         self.assertEqual(len(response.data['images']), 1)
+
+    def test_product_detail_endpoint_uses_cache_get_or_set_with_600s_ttl(self):
+        with patch('catalog.views.cache.get_or_set') as get_or_set:
+            get_or_set.side_effect = (
+                lambda cache_key, default, timeout: default()
+            )
+
+            response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        get_or_set.assert_called_once()
+        cache_key, default, timeout = get_or_set.call_args.args
+        self.assertEqual(
+            cache_key,
+            f'catalog:product-detail:tenant:public:{self.product.slug}',
+        )
+        self.assertEqual(timeout, 600)
+        self.assertTrue(callable(default))
 
     def test_product_detail_endpoint_returns_404_for_inactive_product(self):
         draft_product = Product.all_objects.create(
