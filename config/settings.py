@@ -28,6 +28,8 @@ INSTALLED_APPS = [
     'notifications',
     'tenants',
     'users',
+    'inventory',
+    'vendor',
 ]
 
 AUTH_USER_MODEL = 'users.User'
