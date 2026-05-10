@@ -23,6 +23,7 @@ INSTALLED_APPS = [
 
     'tenants',
     'users',
+    'catalog',
 ]
 
 AUTH_USER_MODEL = 'users.User'
