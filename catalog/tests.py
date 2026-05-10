@@ -495,6 +495,37 @@ class ProductAutocompleteEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data, {'suggestions': []})
 
+    def test_autocomplete_matches_prefix_case_insensitively(self):
+        self.add_suggestions(
+            self.key,
+            'MacBook Air',
+            'mac mini',
+            'Magic Keyboard',
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url, {'q': '  MAC  '})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data,
+            {
+                'suggestions': [
+                    'MacBook Air',
+                    'mac mini',
+                ],
+            },
+        )
+
+    def test_autocomplete_returns_empty_list_when_no_prefix_matches(self):
+        self.add_suggestions(self.key, 'MacBook Air', 'MacBook Pro')
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(self.url, {'q': 'surface'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {'suggestions': []})
+
     def test_autocomplete_uses_public_suggestions_for_anonymous_user(self):
         self.add_suggestions(self.public_key, 'Public MacBook')
         self.add_suggestions(self.key, 'Private MacBook')
