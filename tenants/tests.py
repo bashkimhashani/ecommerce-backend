@@ -6,10 +6,57 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
+from .cache import tenant_cache_key
+from .middleware import _thread_locals
 from .models import Tenant
 
 
 User = get_user_model()
+
+
+class TenantCacheKeyTests(APITestCase):
+    def tearDown(self):
+        if hasattr(_thread_locals, 'tenant'):
+            delattr(_thread_locals, 'tenant')
+
+    def test_tenant_cache_key_includes_current_tenant(self):
+        first_tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store',
+            domain='acme.example.com',
+        )
+        second_tenant = Tenant.objects.create(
+            name='Beta Store',
+            slug='beta-store',
+            domain='beta.example.com',
+        )
+
+        _thread_locals.tenant = first_tenant
+        first_key = tenant_cache_key('catalog:products', 'ecommerce', 1)
+
+        _thread_locals.tenant = second_tenant
+        second_key = tenant_cache_key('catalog:products', 'ecommerce', 1)
+
+        self.assertEqual(
+            first_key,
+            f'ecommerce:tenant:{first_tenant.id}:v1:catalog:products',
+        )
+        self.assertEqual(
+            second_key,
+            f'ecommerce:tenant:{second_tenant.id}:v1:catalog:products',
+        )
+        self.assertNotEqual(first_key, second_key)
+
+    def test_tenant_cache_key_uses_public_prefix_without_current_tenant(self):
+        if hasattr(_thread_locals, 'tenant'):
+            delattr(_thread_locals, 'tenant')
+
+        cache_key = tenant_cache_key('catalog:products', 'ecommerce', 1)
+
+        self.assertEqual(
+            cache_key,
+            'ecommerce:tenant:public:v1:catalog:products',
+        )
 
 
 class TenantRegistrationTests(APITestCase):
