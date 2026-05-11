@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.backends.db import SessionStore
@@ -112,3 +113,104 @@ class CartServiceTests(APITestCase):
         self.assertEqual(response.data['total_items'], 0)
         self.assertEqual(response.data['subtotal'], '0.00')
         self.assertEqual(Cart.objects.filter(user__isnull=True).count(), 1)
+
+    def test_post_cart_items_adds_product_variant_to_cart(self):
+        product_variant = self._create_product_variant(stock_quantity=5)
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            reverse('cart-item-list'),
+            {
+                'product_variant_id': product_variant.id,
+                'quantity': 2,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['product_variant_id'], product_variant.id)
+        self.assertEqual(response.data['quantity'], 2)
+        self.assertEqual(response.data['unit_price'], '999.00')
+        self.assertEqual(response.data['line_total'], '1998.00')
+
+        cart = Cart.objects.get(user=self.user)
+        item = cart.items.get(product_variant=product_variant)
+        self.assertEqual(item.quantity, 2)
+
+    def test_post_cart_items_increments_existing_item(self):
+        product_variant = self._create_product_variant(stock_quantity=5)
+        self.client.force_authenticate(user=self.user)
+        url = reverse('cart-item-list')
+
+        self.client.post(
+            url,
+            {'product_variant_id': product_variant.id, 'quantity': 2},
+            format='json',
+        )
+        response = self.client.post(
+            url,
+            {'product_variant_id': product_variant.id, 'quantity': 1},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['quantity'], 3)
+        self.assertEqual(
+            Cart.objects.get(user=self.user).items.filter(
+                product_variant=product_variant,
+            ).count(),
+            1,
+        )
+
+    def test_post_cart_items_rejects_quantity_above_stock(self):
+        product_variant = self._create_product_variant(stock_quantity=1)
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            reverse('cart-item-list'),
+            {
+                'product_variant_id': product_variant.id,
+                'quantity': 2,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('quantity', response.data)
+        self.assertFalse(Cart.objects.get(user=self.user).items.exists())
+
+    def _create_product_variant(self, stock_quantity):
+        Brand = apps.get_model('catalog', 'Brand')
+        Category = apps.get_model('catalog', 'Category')
+        Product = apps.get_model('catalog', 'Product')
+        ProductVariant = apps.get_model('catalog', 'ProductVariant')
+
+        brand = Brand.objects.create(
+            name='Acme',
+            slug='acme',
+            tenant=self.tenant,
+        )
+        category = Category.objects.create(
+            name='Phones',
+            slug='phones',
+            tenant=self.tenant,
+        )
+        product = Product.objects.create(
+            name='Phone Pro',
+            slug='phone-pro',
+            sku='PHONE-PRO',
+            brand=brand,
+            category=category,
+            status='active',
+            base_price='999.00',
+            tenant=self.tenant,
+        )
+        return ProductVariant.objects.create(
+            product=product,
+            color='Black',
+            storage='256GB',
+            ram='8GB',
+            variant_price='999.00',
+            stock_quantity=stock_quantity,
+            tenant=self.tenant,
+        )
