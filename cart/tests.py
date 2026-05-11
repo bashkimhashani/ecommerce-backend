@@ -114,9 +114,27 @@ class CartServiceTests(APITestCase):
         self.assertEqual(response.data['subtotal'], '0.00')
         self.assertEqual(Cart.objects.filter(user__isnull=True).count(), 1)
 
+
+class CartItemEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store',
+            domain='acme.example.com',
+            plan='basic',
+        )
+        self.user = User.objects.create_user(
+            email='customer@example.com',
+            password='StrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+            tenant=self.tenant,
+        )
+        self.client.force_authenticate(user=self.user)
+
     def test_post_cart_items_adds_product_variant_to_cart(self):
         product_variant = self._create_product_variant(stock_quantity=5)
-        self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
             reverse('cart-item-list'),
@@ -139,7 +157,6 @@ class CartServiceTests(APITestCase):
 
     def test_post_cart_items_increments_existing_item(self):
         product_variant = self._create_product_variant(stock_quantity=5)
-        self.client.force_authenticate(user=self.user)
         url = reverse('cart-item-list')
 
         self.client.post(
@@ -164,7 +181,6 @@ class CartServiceTests(APITestCase):
 
     def test_post_cart_items_rejects_quantity_above_stock(self):
         product_variant = self._create_product_variant(stock_quantity=1)
-        self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
             reverse('cart-item-list'),
@@ -179,9 +195,29 @@ class CartServiceTests(APITestCase):
         self.assertIn('quantity', response.data)
         self.assertFalse(Cart.objects.get(user=self.user).items.exists())
 
+    def test_post_cart_items_rejects_increment_above_stock(self):
+        product_variant = self._create_product_variant(stock_quantity=3)
+        url = reverse('cart-item-list')
+
+        self.client.post(
+            url,
+            {'product_variant_id': product_variant.id, 'quantity': 2},
+            format='json',
+        )
+        response = self.client.post(
+            url,
+            {'product_variant_id': product_variant.id, 'quantity': 2},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('quantity', response.data)
+
+        item = Cart.objects.get(user=self.user).items.get()
+        self.assertEqual(item.quantity, 2)
+
     def test_patch_cart_item_updates_quantity(self):
         product_variant = self._create_product_variant(stock_quantity=5)
-        self.client.force_authenticate(user=self.user)
         create_response = self.client.post(
             reverse('cart-item-list'),
             {'product_variant_id': product_variant.id, 'quantity': 2},
@@ -203,7 +239,6 @@ class CartServiceTests(APITestCase):
 
     def test_patch_cart_item_rejects_quantity_above_stock(self):
         product_variant = self._create_product_variant(stock_quantity=3)
-        self.client.force_authenticate(user=self.user)
         create_response = self.client.post(
             reverse('cart-item-list'),
             {'product_variant_id': product_variant.id, 'quantity': 2},
@@ -251,7 +286,6 @@ class CartServiceTests(APITestCase):
 
     def test_delete_cart_item_removes_item_from_cart(self):
         product_variant = self._create_product_variant(stock_quantity=5)
-        self.client.force_authenticate(user=self.user)
         create_response = self.client.post(
             reverse('cart-item-list'),
             {'product_variant_id': product_variant.id, 'quantity': 2},
@@ -264,6 +298,37 @@ class CartServiceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Cart.objects.get(user=self.user).items.exists())
+
+    def test_delete_cart_item_removes_only_target_item(self):
+        first_variant = self._create_product_variant(
+            stock_quantity=5,
+            sku='PHONE-PRO',
+            slug='phone-pro',
+        )
+        second_variant = self._create_product_variant(
+            stock_quantity=5,
+            sku='PHONE-AIR',
+            slug='phone-air',
+        )
+        first_response = self.client.post(
+            reverse('cart-item-list'),
+            {'product_variant_id': first_variant.id, 'quantity': 1},
+            format='json',
+        )
+        self.client.post(
+            reverse('cart-item-list'),
+            {'product_variant_id': second_variant.id, 'quantity': 2},
+            format='json',
+        )
+
+        response = self.client.delete(
+            reverse('cart-item-detail', args=[first_response.data['id']]),
+        )
+
+        cart = Cart.objects.get(user=self.user)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(cart.items.filter(product_variant=first_variant).exists())
+        self.assertTrue(cart.items.filter(product_variant=second_variant).exists())
 
     def test_delete_cart_item_rejects_item_outside_current_cart(self):
         other_user = User.objects.create_user(
@@ -291,26 +356,35 @@ class CartServiceTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(Cart.objects.get(user=other_user).items.exists())
 
-    def _create_product_variant(self, stock_quantity):
+    def _create_product_variant(
+        self,
+        stock_quantity,
+        sku='PHONE-PRO',
+        slug='phone-pro',
+    ):
         Brand = apps.get_model('catalog', 'Brand')
         Category = apps.get_model('catalog', 'Category')
         Product = apps.get_model('catalog', 'Product')
         ProductVariant = apps.get_model('catalog', 'ProductVariant')
 
-        brand = Brand.objects.create(
-            name='Acme',
+        brand, _ = Brand.objects.get_or_create(
             slug='acme',
             tenant=self.tenant,
+            defaults={
+                'name': 'Acme',
+            },
         )
-        category = Category.objects.create(
-            name='Phones',
+        category, _ = Category.objects.get_or_create(
             slug='phones',
             tenant=self.tenant,
+            defaults={
+                'name': 'Phones',
+            },
         )
         product = Product.objects.create(
             name='Phone Pro',
-            slug='phone-pro',
-            sku='PHONE-PRO',
+            slug=slug,
+            sku=sku,
             brand=brand,
             category=category,
             status='active',
