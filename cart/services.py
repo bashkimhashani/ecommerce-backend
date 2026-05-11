@@ -95,3 +95,9 @@ class CartService:
         item.quantity = quantity
         item.save(update_fields=['quantity', 'updated_at'])
         return item
+
+    @classmethod
+    @transaction.atomic
+    def remove_item(cls, item):
+        item = CartItem.objects.select_for_update().get(pk=item.pk)
+        item.delete()
