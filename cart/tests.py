@@ -387,6 +387,52 @@ class CartServiceTests(APITestCase):
         self.assertEqual(user_items.count(), 1)
         self.assertEqual(user_items.get().quantity, 4)
 
+    def test_merge_carts_removes_overlapping_item_when_stock_is_zero(self):
+        user_cart = Cart.objects.create(user=self.user, tenant=self.tenant)
+        guest_cart = Cart.objects.create(
+            session_key='guest-session-123',
+            tenant=self.tenant,
+        )
+        product_variant = self._create_product_variant(stock_quantity=0)
+        CartItem.objects.create(
+            cart=user_cart,
+            product_variant=product_variant,
+            quantity=1,
+            unit_price=product_variant.variant_price,
+            tenant=self.tenant,
+        )
+        CartItem.objects.create(
+            cart=guest_cart,
+            product_variant=product_variant,
+            quantity=1,
+            unit_price=product_variant.variant_price,
+            tenant=self.tenant,
+        )
+
+        CartService.merge_carts(guest_cart, user_cart)
+
+        self.assertFalse(
+            user_cart.items.filter(product_variant=product_variant).exists(),
+        )
+
+    def test_resolve_merge_quantity_caps_combined_quantity_at_stock(self):
+        quantity = CartService._resolve_merge_quantity(
+            existing_quantity=3,
+            incoming_quantity=4,
+            stock_quantity=5,
+        )
+
+        self.assertEqual(quantity, 5)
+
+    def test_resolve_merge_quantity_returns_zero_when_stock_is_zero(self):
+        quantity = CartService._resolve_merge_quantity(
+            existing_quantity=3,
+            incoming_quantity=4,
+            stock_quantity=0,
+        )
+
+        self.assertEqual(quantity, 0)
+
     def _create_product_variant(
         self,
         stock_quantity,

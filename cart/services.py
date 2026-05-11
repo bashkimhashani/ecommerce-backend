@@ -155,13 +155,15 @@ class CartService:
                 .filter(cart=user_cart, product_variant=product_variant)
                 .first()
             )
-            existing_quantity = user_item.quantity if user_item else 0
-            merged_quantity = min(
-                existing_quantity + guest_item.quantity,
-                product_variant.stock_quantity,
+            merged_quantity = cls._resolve_merge_quantity(
+                existing_quantity=user_item.quantity if user_item else 0,
+                incoming_quantity=guest_item.quantity,
+                stock_quantity=product_variant.stock_quantity,
             )
 
             if merged_quantity < 1:
+                if user_item:
+                    user_item.delete()
                 continue
 
             if user_item:
@@ -182,6 +184,15 @@ class CartService:
         cls._invalidate_cart_after_commit(guest_cart)
         cls._invalidate_cart_after_commit(user_cart)
         return user_cart
+
+    @staticmethod
+    def _resolve_merge_quantity(
+        existing_quantity,
+        incoming_quantity,
+        stock_quantity,
+    ):
+        requested_quantity = existing_quantity + incoming_quantity
+        return max(min(requested_quantity, stock_quantity), 0)
 
     @classmethod
     def _store_cart_after_commit(cls, cart):
