@@ -27,6 +27,17 @@ class CartRedisCache:
         )
         return payload
 
+    @classmethod
+    def get_cart(cls, session_key):
+        if not session_key:
+            return None
+
+        cached_cart = cls.get_client().get(cls.key(session_key))
+        if cached_cart is None:
+            return None
+
+        return json.loads(cached_cart)
+
     @staticmethod
     def serialize_cart(cart):
         items = []

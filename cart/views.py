@@ -16,9 +16,7 @@ class CartDetailView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        cart = CartService.get_or_create_cart(request)
-        serializer = CartSerializer(cart)
-        return Response(serializer.data)
+        return Response(CartService.get_serialized_cart(request))
 
 
 class CartItemCreateView(APIView):

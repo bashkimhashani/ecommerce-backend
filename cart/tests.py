@@ -61,6 +61,31 @@ class CartRedisCacheTests(APITestCase):
         self.assertIsNone(payload)
         get_client.assert_not_called()
 
+    @patch.object(CartRedisCache, 'get_client')
+    def test_get_cart_reads_serialized_cart_by_session_key(self, get_client):
+        redis_client = Mock()
+        redis_client.get.return_value = (
+            '{"id": 1, "items": [], "total_items": 0, "subtotal": "0.00"}'
+        )
+        get_client.return_value = redis_client
+
+        payload = CartRedisCache.get_cart('guest-session-123')
+
+        redis_client.get.assert_called_once_with('cart:guest-session-123')
+        self.assertEqual(payload['id'], 1)
+        self.assertEqual(payload['items'], [])
+
+    @patch.object(CartRedisCache, 'get_client')
+    def test_get_cart_returns_none_on_cache_miss(self, get_client):
+        redis_client = Mock()
+        redis_client.get.return_value = None
+        get_client.return_value = redis_client
+
+        payload = CartRedisCache.get_cart('guest-session-123')
+
+        redis_client.get.assert_called_once_with('cart:guest-session-123')
+        self.assertIsNone(payload)
+
 
 class CartServiceTests(APITestCase):
     def setUp(self):
@@ -158,6 +183,56 @@ class CartServiceTests(APITestCase):
         self.assertEqual(response.data['total_items'], 0)
         self.assertEqual(response.data['subtotal'], '0.00')
         self.assertEqual(Cart.objects.filter(user__isnull=True).count(), 1)
+
+    @patch.object(CartService, 'get_or_create_cart')
+    @patch.object(CartRedisCache, 'get_cart')
+    def test_get_serialized_cart_returns_redis_payload_for_guest(
+        self,
+        get_cart,
+        get_or_create_cart,
+    ):
+        request = SimpleNamespace(
+            user=AnonymousUser(),
+            tenant=self.tenant,
+            session=SessionStore(),
+        )
+        request.session.create()
+        get_cart.return_value = {
+            'id': 1,
+            'status': Cart.Status.ACTIVE,
+            'items': [],
+            'total_items': 0,
+            'subtotal': '0.00',
+        }
+
+        payload = CartService.get_serialized_cart(request)
+
+        self.assertEqual(payload, get_cart.return_value)
+        get_cart.assert_called_once_with(request.session.session_key)
+        get_or_create_cart.assert_not_called()
+
+    @patch.object(CartService, '_store_cart_after_commit')
+    @patch.object(CartRedisCache, 'get_cart')
+    def test_get_serialized_cart_falls_back_to_db_on_redis_miss(
+        self,
+        get_cart,
+        store_cart_after_commit,
+    ):
+        request = SimpleNamespace(
+            user=AnonymousUser(),
+            tenant=self.tenant,
+            session=SessionStore(),
+        )
+        get_cart.return_value = None
+
+        payload = CartService.get_serialized_cart(request)
+
+        self.assertEqual(payload['status'], Cart.Status.ACTIVE)
+        self.assertEqual(payload['items'], [])
+        self.assertEqual(payload['total_items'], 0)
+        self.assertEqual(payload['subtotal'], '0.00')
+        self.assertTrue(Cart.objects.filter(user__isnull=True).exists())
+        store_cart_after_commit.assert_called_once()
 
 
 class CartItemEndpointTests(APITestCase):
