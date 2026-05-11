@@ -3,7 +3,9 @@ from types import SimpleNamespace
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.backends.db import SessionStore
-from django.test import TestCase
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APITestCase
 
 from tenants.models import Tenant
 
@@ -14,7 +16,7 @@ from .services import CartService
 User = get_user_model()
 
 
-class CartServiceTests(TestCase):
+class CartServiceTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name='Acme Store',
@@ -88,3 +90,25 @@ class CartServiceTests(TestCase):
             'Cart requests require session middleware.',
         ):
             CartService.get_or_create_cart(request)
+
+    def test_get_cart_endpoint_returns_authenticated_cart(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(reverse('cart-detail'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], Cart.Status.ACTIVE)
+        self.assertEqual(response.data['items'], [])
+        self.assertEqual(response.data['total_items'], 0)
+        self.assertEqual(response.data['subtotal'], '0.00')
+        self.assertTrue(Cart.objects.filter(user=self.user).exists())
+
+    def test_get_cart_endpoint_returns_guest_cart(self):
+        response = self.client.get(reverse('cart-detail'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], Cart.Status.ACTIVE)
+        self.assertEqual(response.data['items'], [])
+        self.assertEqual(response.data['total_items'], 0)
+        self.assertEqual(response.data['subtotal'], '0.00')
+        self.assertEqual(Cart.objects.filter(user__isnull=True).count(), 1)
