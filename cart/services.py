@@ -1,7 +1,9 @@
 from django.db import transaction
+from redis.exceptions import RedisError
 
 from tenants.middleware import get_current_tenant
 
+from .cache import CartRedisCache
 from .models import Cart, CartItem
 
 
@@ -38,6 +40,7 @@ class CartService:
                 'tenant': tenant,
             },
         )
+        cls._store_cart_after_commit(cart)
         return cart
 
     @staticmethod
@@ -71,15 +74,18 @@ class CartService:
         if item:
             item.quantity = requested_quantity
             item.save(update_fields=['quantity', 'updated_at'])
+            cls._store_cart_after_commit(cart)
             return item
 
-        return CartItem.objects.create(
+        item = CartItem.objects.create(
             cart=cart,
             product_variant=product_variant,
             quantity=quantity,
             unit_price=product_variant.variant_price,
             tenant=cart.tenant,
         )
+        cls._store_cart_after_commit(cart)
+        return item
 
     @classmethod
     @transaction.atomic
@@ -94,10 +100,30 @@ class CartService:
 
         item.quantity = quantity
         item.save(update_fields=['quantity', 'updated_at'])
+        cls._store_cart_after_commit(item.cart)
         return item
 
     @classmethod
     @transaction.atomic
     def remove_item(cls, item):
         item = CartItem.objects.select_for_update().get(pk=item.pk)
+        cart = item.cart
         item.delete()
+        cls._store_cart_after_commit(cart)
+
+    @classmethod
+    def _store_cart_after_commit(cls, cart):
+        if not cart.session_key:
+            return
+
+        transaction.on_commit(lambda: cls._store_cart(cart.pk))
+
+    @staticmethod
+    def _store_cart(cart_id):
+        try:
+            cart = Cart.objects.prefetch_related(
+                'items__product_variant__product',
+            ).get(pk=cart_id)
+            CartRedisCache.store_cart(cart)
+        except (Cart.DoesNotExist, RedisError):
+            return

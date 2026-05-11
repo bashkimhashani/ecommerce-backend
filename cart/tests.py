@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -10,11 +11,55 @@ from rest_framework.test import APITestCase
 
 from tenants.models import Tenant
 
+from .cache import CART_CACHE_TTL_SECONDS, CartRedisCache
 from .models import Cart
 from .services import CartService
 
 
 User = get_user_model()
+
+
+class CartRedisCacheTests(APITestCase):
+    def test_cart_cache_key_uses_session_key(self):
+        self.assertEqual(
+            CartRedisCache.key('guest-session-123'),
+            'cart:guest-session-123',
+        )
+
+    @patch.object(CartRedisCache, 'get_client')
+    @patch.object(CartRedisCache, 'serialize_cart')
+    def test_store_cart_writes_serialized_cart_with_seven_day_ttl(
+        self,
+        serialize_cart,
+        get_client,
+    ):
+        cart = SimpleNamespace(session_key='guest-session-123')
+        redis_client = Mock()
+        serialize_cart.return_value = {
+            'id': 1,
+            'items': [],
+            'total_items': 0,
+            'subtotal': '0.00',
+        }
+        get_client.return_value = redis_client
+
+        payload = CartRedisCache.store_cart(cart)
+
+        self.assertEqual(payload, serialize_cart.return_value)
+        redis_client.setex.assert_called_once()
+        key, ttl, serialized_payload = redis_client.setex.call_args.args
+        self.assertEqual(key, 'cart:guest-session-123')
+        self.assertEqual(ttl, CART_CACHE_TTL_SECONDS)
+        self.assertIn('"items": []', serialized_payload)
+
+    @patch.object(CartRedisCache, 'get_client')
+    def test_store_cart_skips_carts_without_session_key(self, get_client):
+        cart = SimpleNamespace(session_key=None)
+
+        payload = CartRedisCache.store_cart(cart)
+
+        self.assertIsNone(payload)
+        get_client.assert_not_called()
 
 
 class CartServiceTests(APITestCase):
