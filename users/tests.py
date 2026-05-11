@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -124,6 +124,43 @@ class JwtClaimsTests(APITestCase):
         access_token = AccessToken(refresh_response.data['access'])
         self.assertEqual(access_token['role'], 'vendor_admin')
         self.assertEqual(access_token['tenant_id'], self.tenant.id)
+
+    @patch('users.views.CartService.merge_carts')
+    @patch('users.views.CartService.get_or_create_cart')
+    @patch('users.views.Cart.objects')
+    def test_login_merges_guest_cart_into_user_cart(
+        self,
+        cart_objects,
+        get_or_create_cart,
+        merge_carts,
+    ):
+        session = self.client.session
+        session['cart_exists'] = True
+        session.save()
+        guest_cart = Mock()
+        user_cart = Mock()
+        cart_objects.filter.return_value.first.return_value = guest_cart
+        get_or_create_cart.return_value = user_cart
+
+        response = self.client.post(
+            reverse('login'),
+            {
+                'email': 'admin@example.com',
+                'password': 'StrongPass123',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        cart_objects.filter.assert_called_once_with(
+            session_key=session.session_key,
+            status='active',
+        )
+        get_or_create_cart.assert_called_once()
+        cart_request = get_or_create_cart.call_args.args[0]
+        self.assertEqual(cart_request.user, self.user)
+        self.assertEqual(cart_request.tenant, self.tenant)
+        merge_carts.assert_called_once_with(guest_cart, user_cart)
 
     def test_registration_token_contains_default_role_and_null_tenant_id_claims(self):
         response = self.client.post(

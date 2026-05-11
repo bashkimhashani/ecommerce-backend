@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,7 +9,10 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView
+from cart.models import Cart
+from cart.services import CartService
 from .serializers import (
     CustomTokenObtainPairSerializer,
     PasswordResetConfirmSerializer,
@@ -24,6 +29,37 @@ User = get_user_model()
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as error:
+            raise InvalidToken(error.args[0])
+
+        self._merge_guest_cart(request, serializer.user)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _merge_guest_cart(request, user):
+        session = getattr(request, 'session', None)
+        session_key = getattr(session, 'session_key', None)
+        if not session_key:
+            return
+
+        guest_cart = Cart.objects.filter(
+            session_key=session_key,
+            status=Cart.Status.ACTIVE,
+        ).first()
+        if not guest_cart:
+            return
+
+        tenant = getattr(request, 'tenant', None) or user.tenant
+        user_cart = CartService.get_or_create_cart(
+            SimpleNamespace(user=user, tenant=tenant),
+        )
+        CartService.merge_carts(guest_cart, user_cart)
 
 
 class RegisterView(APIView):
