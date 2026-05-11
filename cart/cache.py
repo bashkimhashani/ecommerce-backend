@@ -38,6 +38,13 @@ class CartRedisCache:
 
         return json.loads(cached_cart)
 
+    @classmethod
+    def invalidate_cart(cls, session_key):
+        if not session_key:
+            return 0
+
+        return cls.get_client().delete(cls.key(session_key))
+
     @staticmethod
     def serialize_cart(cart):
         items = []

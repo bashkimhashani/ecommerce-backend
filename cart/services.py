@@ -91,7 +91,7 @@ class CartService:
         if item:
             item.quantity = requested_quantity
             item.save(update_fields=['quantity', 'updated_at'])
-            cls._store_cart_after_commit(cart)
+            cls._invalidate_cart_after_commit(cart)
             return item
 
         item = CartItem.objects.create(
@@ -101,7 +101,7 @@ class CartService:
             unit_price=product_variant.variant_price,
             tenant=cart.tenant,
         )
-        cls._store_cart_after_commit(cart)
+        cls._invalidate_cart_after_commit(cart)
         return item
 
     @classmethod
@@ -117,7 +117,7 @@ class CartService:
 
         item.quantity = quantity
         item.save(update_fields=['quantity', 'updated_at'])
-        cls._store_cart_after_commit(item.cart)
+        cls._invalidate_cart_after_commit(item.cart)
         return item
 
     @classmethod
@@ -126,7 +126,7 @@ class CartService:
         item = CartItem.objects.select_for_update().get(pk=item.pk)
         cart = item.cart
         item.delete()
-        cls._store_cart_after_commit(cart)
+        cls._invalidate_cart_after_commit(cart)
 
     @classmethod
     def _store_cart_after_commit(cls, cart):
@@ -134,6 +134,13 @@ class CartService:
             return
 
         transaction.on_commit(lambda: cls._store_cart(cart.pk))
+
+    @classmethod
+    def _invalidate_cart_after_commit(cls, cart):
+        if not cart.session_key:
+            return
+
+        transaction.on_commit(lambda: cls._invalidate_cart(cart.session_key))
 
     @staticmethod
     def _store_cart(cart_id):
@@ -143,6 +150,13 @@ class CartService:
             ).get(pk=cart_id)
             CartRedisCache.store_cart(cart)
         except (Cart.DoesNotExist, RedisError):
+            return
+
+    @staticmethod
+    def _invalidate_cart(session_key):
+        try:
+            CartRedisCache.invalidate_cart(session_key)
+        except RedisError:
             return
 
     @staticmethod
