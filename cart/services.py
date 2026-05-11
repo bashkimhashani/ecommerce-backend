@@ -129,6 +129,61 @@ class CartService:
         cls._invalidate_cart_after_commit(cart)
 
     @classmethod
+    @transaction.atomic
+    def merge_carts(cls, guest_cart, user_cart):
+        if not guest_cart or not user_cart or guest_cart.pk == user_cart.pk:
+            return user_cart
+
+        guest_cart = Cart.objects.select_for_update().get(pk=guest_cart.pk)
+        user_cart = Cart.objects.select_for_update().get(pk=user_cart.pk)
+
+        if guest_cart.status != Cart.Status.ACTIVE:
+            return user_cart
+
+        guest_items = (
+            CartItem.objects.select_for_update()
+            .select_related('product_variant')
+            .filter(cart=guest_cart)
+        )
+
+        for guest_item in guest_items:
+            product_variant = type(
+                guest_item.product_variant,
+            ).objects.select_for_update().get(pk=guest_item.product_variant_id)
+            user_item = (
+                CartItem.objects.select_for_update()
+                .filter(cart=user_cart, product_variant=product_variant)
+                .first()
+            )
+            existing_quantity = user_item.quantity if user_item else 0
+            merged_quantity = min(
+                existing_quantity + guest_item.quantity,
+                product_variant.stock_quantity,
+            )
+
+            if merged_quantity < 1:
+                continue
+
+            if user_item:
+                user_item.quantity = merged_quantity
+                user_item.save(update_fields=['quantity', 'updated_at'])
+                continue
+
+            CartItem.objects.create(
+                cart=user_cart,
+                product_variant=product_variant,
+                quantity=merged_quantity,
+                unit_price=guest_item.unit_price,
+                tenant=user_cart.tenant,
+            )
+
+        guest_cart.status = Cart.Status.MERGED
+        guest_cart.save(update_fields=['status', 'updated_at'])
+        cls._invalidate_cart_after_commit(guest_cart)
+        cls._invalidate_cart_after_commit(user_cart)
+        return user_cart
+
+    @classmethod
     def _store_cart_after_commit(cls, cart):
         if not cart.session_key:
             return
