@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_spectacular',
     'ai',
+    'cart',
     'catalog',
     'notifications',
     'tenants',
