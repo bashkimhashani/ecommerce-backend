@@ -77,3 +77,15 @@ class CartItemDetailView(APIView):
             )
 
         return Response(CartItemSerializer(item).data)
+
+    def delete(self, request, item_id):
+        cart = CartService.get_or_create_cart(request)
+        item = cart.items.filter(pk=item_id).first()
+        if item is None:
+            return Response(
+                {'detail': 'Cart item not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        CartService.remove_item(item)
+        return Response(status=status.HTTP_204_NO_CONTENT)

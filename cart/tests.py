@@ -249,6 +249,48 @@ class CartServiceTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_delete_cart_item_removes_item_from_cart(self):
+        product_variant = self._create_product_variant(stock_quantity=5)
+        self.client.force_authenticate(user=self.user)
+        create_response = self.client.post(
+            reverse('cart-item-list'),
+            {'product_variant_id': product_variant.id, 'quantity': 2},
+            format='json',
+        )
+
+        response = self.client.delete(
+            reverse('cart-item-detail', args=[create_response.data['id']]),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Cart.objects.get(user=self.user).items.exists())
+
+    def test_delete_cart_item_rejects_item_outside_current_cart(self):
+        other_user = User.objects.create_user(
+            email='delete-other@example.com',
+            password='StrongPass123',
+            first_name='Other',
+            last_name='Customer',
+            role='customer',
+            tenant=self.tenant,
+        )
+        product_variant = self._create_product_variant(stock_quantity=5)
+
+        self.client.force_authenticate(user=other_user)
+        create_response = self.client.post(
+            reverse('cart-item-list'),
+            {'product_variant_id': product_variant.id, 'quantity': 2},
+            format='json',
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(
+            reverse('cart-item-detail', args=[create_response.data['id']]),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Cart.objects.get(user=other_user).items.exists())
+
     def _create_product_variant(self, stock_quantity):
         Brand = apps.get_model('catalog', 'Brand')
         Category = apps.get_model('catalog', 'Category')
