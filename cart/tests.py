@@ -20,6 +20,31 @@ User = get_user_model()
 
 
 class CartRedisCacheTests(APITestCase):
+    class FakeRedis:
+        def __init__(self):
+            self.now = 0
+            self.storage = {}
+
+        def setex(self, key, ttl, value):
+            self.storage[key] = {
+                'expires_at': self.now + ttl,
+                'value': value,
+            }
+
+        def get(self, key):
+            record = self.storage.get(key)
+            if not record:
+                return None
+
+            if self.now >= record['expires_at']:
+                self.storage.pop(key)
+                return None
+
+            return record['value']
+
+        def advance(self, seconds):
+            self.now += seconds
+
     def test_cart_cache_key_uses_session_key(self):
         self.assertEqual(
             CartRedisCache.key('guest-session-123'),
@@ -51,6 +76,34 @@ class CartRedisCacheTests(APITestCase):
         self.assertEqual(key, 'cart:guest-session-123')
         self.assertEqual(ttl, CART_CACHE_TTL_SECONDS)
         self.assertIn('"items": []', serialized_payload)
+
+    @patch.object(CartRedisCache, 'get_client')
+    @patch.object(CartRedisCache, 'serialize_cart')
+    def test_stored_cart_is_retrieved_until_ttl_expires(
+        self,
+        serialize_cart,
+        get_client,
+    ):
+        redis_client = self.FakeRedis()
+        cart = SimpleNamespace(session_key='guest-session-123')
+        serialize_cart.return_value = {
+            'id': 1,
+            'items': [],
+            'total_items': 0,
+            'subtotal': '0.00',
+        }
+        get_client.return_value = redis_client
+
+        CartRedisCache.store_cart(cart)
+        cached_payload = CartRedisCache.get_cart('guest-session-123')
+
+        self.assertEqual(cached_payload, serialize_cart.return_value)
+
+        redis_client.advance(CART_CACHE_TTL_SECONDS)
+
+        expired_payload = CartRedisCache.get_cart('guest-session-123')
+
+        self.assertIsNone(expired_payload)
 
     @patch.object(CartRedisCache, 'get_client')
     def test_store_cart_skips_carts_without_session_key(self, get_client):
