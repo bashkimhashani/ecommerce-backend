@@ -359,6 +359,77 @@ class CartServiceTests(APITestCase):
         invalidate_cart.assert_any_call(guest_cart)
         invalidate_cart.assert_any_call(user_cart)
 
+    def test_merge_carts_keeps_non_overlapping_user_and_guest_items(self):
+        user_cart = Cart.objects.create(user=self.user, tenant=self.tenant)
+        guest_cart = Cart.objects.create(
+            session_key='guest-session-123',
+            tenant=self.tenant,
+        )
+        user_variant = self._create_product_variant(
+            stock_quantity=5,
+            sku='PHONE-PRO',
+            slug='phone-pro',
+        )
+        guest_variant = self._create_product_variant(
+            stock_quantity=5,
+            sku='PHONE-AIR',
+            slug='phone-air',
+        )
+        CartItem.objects.create(
+            cart=user_cart,
+            product_variant=user_variant,
+            quantity=1,
+            unit_price=user_variant.variant_price,
+            tenant=self.tenant,
+        )
+        CartItem.objects.create(
+            cart=guest_cart,
+            product_variant=guest_variant,
+            quantity=2,
+            unit_price=guest_variant.variant_price,
+            tenant=self.tenant,
+        )
+
+        CartService.merge_carts(guest_cart, user_cart)
+
+        self.assertEqual(user_cart.items.count(), 2)
+        self.assertEqual(
+            user_cart.items.get(product_variant=user_variant).quantity,
+            1,
+        )
+        self.assertEqual(
+            user_cart.items.get(product_variant=guest_variant).quantity,
+            2,
+        )
+
+    def test_merge_carts_combines_overlapping_items_under_stock_limit(self):
+        user_cart = Cart.objects.create(user=self.user, tenant=self.tenant)
+        guest_cart = Cart.objects.create(
+            session_key='guest-session-123',
+            tenant=self.tenant,
+        )
+        product_variant = self._create_product_variant(stock_quantity=5)
+        CartItem.objects.create(
+            cart=user_cart,
+            product_variant=product_variant,
+            quantity=2,
+            unit_price=product_variant.variant_price,
+            tenant=self.tenant,
+        )
+        CartItem.objects.create(
+            cart=guest_cart,
+            product_variant=product_variant,
+            quantity=3,
+            unit_price=product_variant.variant_price,
+            tenant=self.tenant,
+        )
+
+        CartService.merge_carts(guest_cart, user_cart)
+
+        user_items = user_cart.items.filter(product_variant=product_variant)
+        self.assertEqual(user_items.count(), 1)
+        self.assertEqual(user_items.get().quantity, 5)
+
     def test_merge_carts_combines_overlapping_items_with_stock_cap(self):
         user_cart = Cart.objects.create(user=self.user, tenant=self.tenant)
         guest_cart = Cart.objects.create(
