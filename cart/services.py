@@ -1,3 +1,6 @@
+import json
+
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from redis.exceptions import RedisError
 
@@ -8,6 +11,20 @@ from .models import Cart, CartItem
 
 
 class CartService:
+    @classmethod
+    def get_serialized_cart(cls, request):
+        user = getattr(request, 'user', None)
+
+        if not user or not user.is_authenticated:
+            session_key = cls._get_or_create_session_key(request)
+            cached_cart = cls._get_cached_cart(session_key)
+            if cached_cart is not None:
+                return cached_cart
+
+        cart = cls.get_or_create_cart(request)
+        payload = CartRedisCache.serialize_cart(cart)
+        return cls._json_safe(payload)
+
     @classmethod
     @transaction.atomic
     def get_or_create_cart(cls, request):
@@ -127,3 +144,14 @@ class CartService:
             CartRedisCache.store_cart(cart)
         except (Cart.DoesNotExist, RedisError):
             return
+
+    @staticmethod
+    def _get_cached_cart(session_key):
+        try:
+            return CartRedisCache.get_cart(session_key)
+        except (json.JSONDecodeError, RedisError):
+            return None
+
+    @staticmethod
+    def _json_safe(payload):
+        return json.loads(json.dumps(payload, cls=DjangoJSONEncoder))
