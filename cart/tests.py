@@ -86,6 +86,24 @@ class CartRedisCacheTests(APITestCase):
         redis_client.get.assert_called_once_with('cart:guest-session-123')
         self.assertIsNone(payload)
 
+    @patch.object(CartRedisCache, 'get_client')
+    def test_invalidate_cart_deletes_session_key(self, get_client):
+        redis_client = Mock()
+        redis_client.delete.return_value = 1
+        get_client.return_value = redis_client
+
+        deleted_count = CartRedisCache.invalidate_cart('guest-session-123')
+
+        redis_client.delete.assert_called_once_with('cart:guest-session-123')
+        self.assertEqual(deleted_count, 1)
+
+    @patch.object(CartRedisCache, 'get_client')
+    def test_invalidate_cart_skips_missing_session_key(self, get_client):
+        deleted_count = CartRedisCache.invalidate_cart(None)
+
+        self.assertEqual(deleted_count, 0)
+        get_client.assert_not_called()
+
 
 class CartServiceTests(APITestCase):
     def setUp(self):
@@ -233,6 +251,34 @@ class CartServiceTests(APITestCase):
         self.assertEqual(payload['subtotal'], '0.00')
         self.assertTrue(Cart.objects.filter(user__isnull=True).exists())
         store_cart_after_commit.assert_called_once()
+
+    @patch('cart.services.transaction.on_commit')
+    def test_invalidate_cart_after_commit_schedules_session_key_delete(
+        self,
+        on_commit,
+    ):
+        cart = SimpleNamespace(session_key='guest-session-123')
+
+        CartService._invalidate_cart_after_commit(cart)
+
+        on_commit.assert_called_once()
+        callback = on_commit.call_args.args[0]
+
+        with patch.object(CartService, '_invalidate_cart') as invalidate_cart:
+            callback()
+
+        invalidate_cart.assert_called_once_with('guest-session-123')
+
+    @patch('cart.services.transaction.on_commit')
+    def test_invalidate_cart_after_commit_skips_carts_without_session(
+        self,
+        on_commit,
+    ):
+        cart = SimpleNamespace(session_key=None)
+
+        CartService._invalidate_cart_after_commit(cart)
+
+        on_commit.assert_not_called()
 
 
 class CartItemEndpointTests(APITestCase):
