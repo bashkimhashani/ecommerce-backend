@@ -99,3 +99,7 @@ class CartItemCreateSerializer(serializers.Serializer):
         attrs['product_variant'] = product_variant
         del attrs['product_variant_id']
         return attrs
+
+
+class CartItemUpdateSerializer(serializers.Serializer):
+    quantity = serializers.IntegerField(min_value=1)

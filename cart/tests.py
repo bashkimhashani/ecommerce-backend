@@ -179,6 +179,76 @@ class CartServiceTests(APITestCase):
         self.assertIn('quantity', response.data)
         self.assertFalse(Cart.objects.get(user=self.user).items.exists())
 
+    def test_patch_cart_item_updates_quantity(self):
+        product_variant = self._create_product_variant(stock_quantity=5)
+        self.client.force_authenticate(user=self.user)
+        create_response = self.client.post(
+            reverse('cart-item-list'),
+            {'product_variant_id': product_variant.id, 'quantity': 2},
+            format='json',
+        )
+
+        response = self.client.patch(
+            reverse('cart-item-detail', args=[create_response.data['id']]),
+            {'quantity': 4},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['quantity'], 4)
+        self.assertEqual(response.data['line_total'], '3996.00')
+
+        item = Cart.objects.get(user=self.user).items.get()
+        self.assertEqual(item.quantity, 4)
+
+    def test_patch_cart_item_rejects_quantity_above_stock(self):
+        product_variant = self._create_product_variant(stock_quantity=3)
+        self.client.force_authenticate(user=self.user)
+        create_response = self.client.post(
+            reverse('cart-item-list'),
+            {'product_variant_id': product_variant.id, 'quantity': 2},
+            format='json',
+        )
+
+        response = self.client.patch(
+            reverse('cart-item-detail', args=[create_response.data['id']]),
+            {'quantity': 4},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('quantity', response.data)
+
+        item = Cart.objects.get(user=self.user).items.get()
+        self.assertEqual(item.quantity, 2)
+
+    def test_patch_cart_item_rejects_item_outside_current_cart(self):
+        other_user = User.objects.create_user(
+            email='other@example.com',
+            password='StrongPass123',
+            first_name='Other',
+            last_name='Customer',
+            role='customer',
+            tenant=self.tenant,
+        )
+        product_variant = self._create_product_variant(stock_quantity=5)
+
+        self.client.force_authenticate(user=other_user)
+        create_response = self.client.post(
+            reverse('cart-item-list'),
+            {'product_variant_id': product_variant.id, 'quantity': 2},
+            format='json',
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            reverse('cart-item-detail', args=[create_response.data['id']]),
+            {'quantity': 3},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
     def _create_product_variant(self, stock_quantity):
         Brand = apps.get_model('catalog', 'Brand')
         Category = apps.get_model('catalog', 'Category')

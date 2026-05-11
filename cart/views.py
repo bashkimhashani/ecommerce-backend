@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from .serializers import (
     CartItemCreateSerializer,
     CartItemSerializer,
+    CartItemUpdateSerializer,
     CartSerializer,
 )
 from .services import CartService
@@ -47,3 +48,32 @@ class CartItemCreateView(APIView):
             CartItemSerializer(item).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class CartItemDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    def patch(self, request, item_id):
+        cart = CartService.get_or_create_cart(request)
+        item = cart.items.filter(pk=item_id).first()
+        if item is None:
+            return Response(
+                {'detail': 'Cart item not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = CartItemUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            item = CartService.update_item_quantity(
+                item=item,
+                quantity=serializer.validated_data['quantity'],
+            )
+        except ValueError as exc:
+            return Response(
+                {'quantity': [str(exc)]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(CartItemSerializer(item).data)

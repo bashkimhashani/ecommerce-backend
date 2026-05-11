@@ -80,3 +80,18 @@ class CartService:
             unit_price=product_variant.variant_price,
             tenant=cart.tenant,
         )
+
+    @classmethod
+    @transaction.atomic
+    def update_item_quantity(cls, item, quantity):
+        product_variant = type(item.product_variant).objects.select_for_update().get(
+            pk=item.product_variant_id,
+        )
+        item = CartItem.objects.select_for_update().get(pk=item.pk)
+
+        if quantity > product_variant.stock_quantity:
+            raise ValueError('Requested quantity exceeds available stock.')
+
+        item.quantity = quantity
+        item.save(update_fields=['quantity', 'updated_at'])
+        return item
