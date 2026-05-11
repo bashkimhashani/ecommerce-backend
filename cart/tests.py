@@ -12,7 +12,7 @@ from rest_framework.test import APITestCase
 from tenants.models import Tenant
 
 from .cache import CART_CACHE_TTL_SECONDS, CartRedisCache
-from .models import Cart
+from .models import Cart, CartItem
 from .services import CartService
 
 
@@ -332,6 +332,105 @@ class CartServiceTests(APITestCase):
         CartService._invalidate_cart_after_commit(cart)
 
         on_commit.assert_not_called()
+
+    @patch.object(CartService, '_invalidate_cart_after_commit')
+    def test_merge_carts_moves_guest_items_to_user_cart(self, invalidate_cart):
+        user_cart = Cart.objects.create(user=self.user, tenant=self.tenant)
+        guest_cart = Cart.objects.create(
+            session_key='guest-session-123',
+            tenant=self.tenant,
+        )
+        product_variant = self._create_product_variant(stock_quantity=5)
+        CartItem.objects.create(
+            cart=guest_cart,
+            product_variant=product_variant,
+            quantity=2,
+            unit_price=product_variant.variant_price,
+            tenant=self.tenant,
+        )
+
+        merged_cart = CartService.merge_carts(guest_cart, user_cart)
+
+        self.assertEqual(merged_cart.pk, user_cart.pk)
+        user_item = user_cart.items.get(product_variant=product_variant)
+        self.assertEqual(user_item.quantity, 2)
+        guest_cart.refresh_from_db()
+        self.assertEqual(guest_cart.status, Cart.Status.MERGED)
+        invalidate_cart.assert_any_call(guest_cart)
+        invalidate_cart.assert_any_call(user_cart)
+
+    def test_merge_carts_combines_overlapping_items_with_stock_cap(self):
+        user_cart = Cart.objects.create(user=self.user, tenant=self.tenant)
+        guest_cart = Cart.objects.create(
+            session_key='guest-session-123',
+            tenant=self.tenant,
+        )
+        product_variant = self._create_product_variant(stock_quantity=4)
+        CartItem.objects.create(
+            cart=user_cart,
+            product_variant=product_variant,
+            quantity=3,
+            unit_price=product_variant.variant_price,
+            tenant=self.tenant,
+        )
+        CartItem.objects.create(
+            cart=guest_cart,
+            product_variant=product_variant,
+            quantity=3,
+            unit_price=product_variant.variant_price,
+            tenant=self.tenant,
+        )
+
+        CartService.merge_carts(guest_cart, user_cart)
+
+        user_items = user_cart.items.filter(product_variant=product_variant)
+        self.assertEqual(user_items.count(), 1)
+        self.assertEqual(user_items.get().quantity, 4)
+
+    def _create_product_variant(
+        self,
+        stock_quantity,
+        sku='PHONE-PRO',
+        slug='phone-pro',
+    ):
+        Brand = apps.get_model('catalog', 'Brand')
+        Category = apps.get_model('catalog', 'Category')
+        Product = apps.get_model('catalog', 'Product')
+        ProductVariant = apps.get_model('catalog', 'ProductVariant')
+
+        brand, _ = Brand.objects.get_or_create(
+            slug='acme',
+            tenant=self.tenant,
+            defaults={
+                'name': 'Acme',
+            },
+        )
+        category, _ = Category.objects.get_or_create(
+            slug='phones',
+            tenant=self.tenant,
+            defaults={
+                'name': 'Phones',
+            },
+        )
+        product = Product.objects.create(
+            name='Phone Pro',
+            slug=slug,
+            sku=sku,
+            brand=brand,
+            category=category,
+            status='active',
+            base_price='999.00',
+            tenant=self.tenant,
+        )
+        return ProductVariant.objects.create(
+            product=product,
+            color='Black',
+            storage='256GB',
+            ram='8GB',
+            variant_price='999.00',
+            stock_quantity=stock_quantity,
+            tenant=self.tenant,
+        )
 
 
 class CartItemEndpointTests(APITestCase):
