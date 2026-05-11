@@ -2,7 +2,7 @@ from django.db import transaction
 
 from tenants.middleware import get_current_tenant
 
-from .models import Cart
+from .models import Cart, CartItem
 
 
 class CartService:
@@ -50,3 +50,33 @@ class CartService:
             session.create()
 
         return session.session_key
+
+    @classmethod
+    @transaction.atomic
+    def add_item(cls, cart, product_variant, quantity):
+        product_variant = type(product_variant).objects.select_for_update().get(
+            pk=product_variant.pk,
+        )
+        item = (
+            CartItem.objects.select_for_update()
+            .filter(cart=cart, product_variant=product_variant)
+            .first()
+        )
+        current_quantity = item.quantity if item else 0
+        requested_quantity = current_quantity + quantity
+
+        if requested_quantity > product_variant.stock_quantity:
+            raise ValueError('Requested quantity exceeds available stock.')
+
+        if item:
+            item.quantity = requested_quantity
+            item.save(update_fields=['quantity', 'updated_at'])
+            return item
+
+        return CartItem.objects.create(
+            cart=cart,
+            product_variant=product_variant,
+            quantity=quantity,
+            unit_price=product_variant.variant_price,
+            tenant=cart.tenant,
+        )

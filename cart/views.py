@@ -1,8 +1,13 @@
+from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import CartSerializer
+from .serializers import (
+    CartItemCreateSerializer,
+    CartItemSerializer,
+    CartSerializer,
+)
 from .services import CartService
 
 
@@ -13,3 +18,32 @@ class CartDetailView(APIView):
         cart = CartService.get_or_create_cart(request)
         serializer = CartSerializer(cart)
         return Response(serializer.data)
+
+
+class CartItemCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        cart = CartService.get_or_create_cart(request)
+        serializer = CartItemCreateSerializer(
+            data=request.data,
+            context={'cart': cart},
+        )
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            item = CartService.add_item(
+                cart=cart,
+                product_variant=serializer.validated_data['product_variant'],
+                quantity=serializer.validated_data['quantity'],
+            )
+        except ValueError as exc:
+            return Response(
+                {'quantity': [str(exc)]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            CartItemSerializer(item).data,
+            status=status.HTTP_201_CREATED,
+        )

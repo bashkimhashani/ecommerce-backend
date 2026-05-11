@@ -1,3 +1,4 @@
+from django.apps import apps
 from rest_framework import serializers
 
 from .models import Cart, CartItem
@@ -59,3 +60,42 @@ class CartSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+
+class CartItemCreateSerializer(serializers.Serializer):
+    product_variant_id = serializers.IntegerField()
+    quantity = serializers.IntegerField(min_value=1)
+
+    def validate_product_variant_id(self, value):
+        ProductVariant = apps.get_model('catalog', 'ProductVariant')
+
+        try:
+            return ProductVariant.objects.get(pk=value)
+        except ProductVariant.DoesNotExist:
+            raise serializers.ValidationError('Product variant not found.')
+
+    def validate(self, attrs):
+        product_variant = attrs['product_variant_id']
+        quantity = attrs['quantity']
+        cart = self.context.get('cart')
+        current_quantity = 0
+
+        if cart:
+            current_quantity = (
+                CartItem.objects.filter(
+                    cart=cart,
+                    product_variant=product_variant,
+                )
+                .values_list('quantity', flat=True)
+                .first()
+                or 0
+            )
+
+        if current_quantity + quantity > product_variant.stock_quantity:
+            raise serializers.ValidationError({
+                'quantity': 'Requested quantity exceeds available stock.',
+            })
+
+        attrs['product_variant'] = product_variant
+        del attrs['product_variant_id']
+        return attrs
