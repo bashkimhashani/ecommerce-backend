@@ -1,7 +1,10 @@
 from decimal import Decimal
 
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from django_fsm import TransitionNotAllowed, can_proceed
+from rest_framework import status
+from rest_framework.test import APITestCase
 
 from cart.models import Cart
 from checkout.models import CheckoutSession
@@ -106,6 +109,152 @@ class OrderEventAuditTrailTests(TestCase):
             last_name='User',
             role='customer',
             tenant=self.tenant,
+        )
+
+
+class VendorOrderConfirmEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store',
+            domain='acme.example.com',
+            plan='basic',
+        )
+        self.vendor = User.objects.create_user(
+            email='vendor@example.com',
+            password='StrongPass123',
+            first_name='Vendor',
+            last_name='Admin',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        self.customer = User.objects.create_user(
+            email='customer@example.com',
+            password='StrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+            tenant=self.tenant,
+        )
+
+    def test_vendor_can_confirm_pending_order(self):
+        order = self._create_order()
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-confirm', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], Order.Status.CONFIRMED)
+        updated_order = Order.objects.get(pk=order.pk)
+        self.assertEqual(updated_order.status, Order.Status.CONFIRMED)
+        self.assertTrue(
+            updated_order.events.filter(
+                from_status=Order.Status.PENDING,
+                to_status=Order.Status.CONFIRMED,
+                transition='confirm',
+            ).exists(),
+        )
+
+    def test_vendor_confirm_rejects_non_pending_order(self):
+        order = self._create_order()
+        order.confirm()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-confirm', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cannot be confirmed', response.data['detail'])
+
+    def test_vendor_confirm_requires_vendor_admin_role(self):
+        order = self._create_order()
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            reverse('vendor-order-confirm', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_vendor_confirm_returns_not_found_for_other_tenant_order(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store',
+            domain='other.example.com',
+            plan='basic',
+        )
+        other_customer = User.objects.create_user(
+            email='other-customer@example.com',
+            password='StrongPass123',
+            first_name='Other',
+            last_name='Customer',
+            role='customer',
+            tenant=other_tenant,
+        )
+        order = self._create_order(
+            user=other_customer,
+            tenant=other_tenant,
+            idempotency_key='other-checkout-key',
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-confirm', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def _create_order(
+        self,
+        user=None,
+        tenant=None,
+        idempotency_key='checkout-key-123',
+    ):
+        user = user or self.customer
+        tenant = tenant or self.tenant
+        cart = Cart.objects.create(
+            user=user,
+            tenant=tenant,
+        )
+        checkout_session = CheckoutSession.objects.create(
+            user=user,
+            cart=cart,
+            idempotency_key=idempotency_key,
+            shipping_address={
+                'full_name': 'Customer User',
+                'line1': 'Main street 1',
+                'city': 'Prishtina',
+                'postal_code': '10000',
+                'country': 'Kosovo',
+            },
+            status=CheckoutSession.Status.READY,
+            tenant=tenant,
+        )
+        return Order.objects.create(
+            user=user,
+            checkout_session=checkout_session,
+            shipping_address={
+                'full_name': 'Customer User',
+                'line1': 'Main street 1',
+                'city': 'Prishtina',
+                'postal_code': '10000',
+                'country': 'Kosovo',
+            },
+            subtotal=Decimal('99.00'),
+            total_amount=Decimal('99.00'),
+            tenant=tenant,
         )
 
     def test_order_transition_creates_audit_event(self):
