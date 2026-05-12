@@ -30,6 +30,14 @@ class CheckoutSessionCreateSerializer(serializers.Serializer):
     )
     shipping_address = serializers.JSONField(required=False, default=dict)
 
+    def validate_shipping_address(self, value):
+        if not value:
+            return {}
+
+        serializer = AddressSerializer(data=value)
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data
+
     def validate(self, attrs):
         idempotency_key = attrs.get('idempotency_key') or self.context.get(
             'idempotency_key',
