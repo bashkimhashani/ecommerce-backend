@@ -1,16 +1,52 @@
 from rest_framework import serializers
 from .models import Inventory
 
+
 class InventorySerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    available_quantity = serializers.IntegerField(read_only=True)
+    product_name = serializers.CharField(
+        source='product_variant.product.name',
+        read_only=True,
+    )
+    product_sku = serializers.CharField(
+        source='product_variant.product.sku',
+        read_only=True,
+    )
+    variant_name = serializers.SerializerMethodField()
+    is_low_stock = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = Inventory
         fields = [
-            'id', 'product', 'product_name', 'vendor', 'tenant',
-            'quantity_available', 'reserved_quantity', 'available_quantity',
-            'low_stock_threshold', 'price', 'compare_at_price', 'cost_per_item',
-            'is_active', 'is_tracked', 'sku', 'barcode', 'created_at', 'updated_at'
+            'id',
+            'product_variant',
+            'product_name',
+            'product_sku',
+            'variant_name',
+            'vendor',
+            'tenant',
+            'quantity',
+            'low_stock_threshold',
+            'is_low_stock',
+            'created_at',
+            'last_updated',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id',
+            'product_variant',
+            'product_name',
+            'product_sku',
+            'variant_name',
+            'vendor',
+            'tenant',
+            'is_low_stock',
+            'created_at',
+            'last_updated',
+        ]
+
+    def get_variant_name(self, obj):
+        values = [
+            obj.product_variant.color,
+            obj.product_variant.storage,
+            obj.product_variant.ram,
+        ]
+        return ' / '.join(value for value in values if value) or 'Default'
