@@ -8,6 +8,7 @@ from cart.models import Cart, CartItem
 from tenants.models import Tenant
 
 from .models import CheckoutSession
+from .serializers import AddressSerializer
 
 
 User = get_user_model()
@@ -50,6 +51,17 @@ class CheckoutSessionEndpointTests(APITestCase):
         self.assertEqual(
             response.data['shipping_address']['city'],
             'Prishtina',
+        )
+        checkout_session = CheckoutSession.objects.get(
+            id=response.data['id'],
+        )
+        self.assertEqual(checkout_session.user, self.user)
+        self.assertEqual(checkout_session.cart, cart)
+        self.assertEqual(checkout_session.tenant, self.tenant)
+        self.assertEqual(checkout_session.status, CheckoutSession.Status.PENDING)
+        self.assertEqual(
+            checkout_session.shipping_address['postal_code'],
+            '10000',
         )
 
     def test_post_checkout_session_validates_shipping_address_fields(self):
@@ -182,6 +194,18 @@ class CheckoutSessionEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('line1', response.data)
         self.assertIn('postal_code', response.data)
+
+    def test_address_serializer_rejects_missing_required_fields(self):
+        serializer = AddressSerializer(data={
+            'city': 'Prishtina',
+            'line1': 'Main street 1',
+        })
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('full_name', serializer.errors)
+        self.assertIn('phone', serializer.errors)
+        self.assertIn('postal_code', serializer.errors)
+        self.assertIn('country', serializer.errors)
 
     def test_patch_checkout_session_address_rejects_blank_required_fields(self):
         cart = self._create_cart_with_item()
