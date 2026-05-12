@@ -70,7 +70,7 @@ class StripeWebhookService:
         checkout_session = CheckoutSession.objects.get(pk=checkout_session_id)
         order = OrderCreationService.create_from_checkout(checkout_session)
         if order.status == Order.Status.PENDING:
-            order.status = Order.Status.CONFIRMED
+            order.confirm()
             order.save(update_fields=['status', 'updated_at'])
 
         return order

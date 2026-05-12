@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django_fsm import FSMField, transition
 
 from tenants.mixins import TenantModel
 
@@ -35,11 +36,12 @@ class Order(TenantModel):
         db_index=True,
         default=generate_order_number,
     )
-    status = models.CharField(
+    status = FSMField(
         max_length=20,
         choices=Status.choices,
         default=Status.PENDING,
         db_index=True,
+        protected=True,
     )
     shipping_address = models.JSONField(default=dict)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
@@ -62,6 +64,26 @@ class Order(TenantModel):
 
     def __str__(self):
         return self.order_number
+
+    @transition(field=status, source=Status.PENDING, target=Status.CONFIRMED)
+    def confirm(self):
+        pass
+
+    @transition(field=status, source=Status.CONFIRMED, target=Status.PROCESSING)
+    def mark_processing(self):
+        pass
+
+    @transition(field=status, source=Status.PROCESSING, target=Status.SHIPPED)
+    def mark_shipped(self):
+        pass
+
+    @transition(field=status, source=Status.SHIPPED, target=Status.DELIVERED)
+    def mark_delivered(self):
+        pass
+
+    @transition(field=status, source=Status.PENDING, target=Status.CANCELLED)
+    def cancel(self):
+        pass
 
 
 class OrderItem(TenantModel):
