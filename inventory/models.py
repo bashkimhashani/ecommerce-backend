@@ -1,46 +1,48 @@
 from django.db import models
-from catalog.models import Product
+from catalog.models import ProductVariant
+from tenants.mixins import TenantModel
 from vendor.models import VendorProfile
-from tenants.models import Tenant
 
-class Inventory(models.Model):
+
+class Inventory(TenantModel):
     """
-    Inventory management for vendor products
+    Inventory management for vendor product variants.
     """
-    product = models.OneToOneField(Product, on_delete=models.CASCADE, related_name='inventory')
-    vendor = models.ForeignKey(VendorProfile, on_delete=models.CASCADE, related_name='inventory_items')
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
-    
-    quantity_available = models.IntegerField(default=0)
-    reserved_quantity = models.IntegerField(default=0)  # Items in carts but not purchased
-    low_stock_threshold = models.IntegerField(default=10)
-    
-    # Pricing
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    compare_at_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    cost_per_item = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    
-    # Status
-    is_active = models.BooleanField(default=True)
-    is_tracked = models.BooleanField(default=True)  # Track inventory or not
-    
-    # SKU and barcode
-    sku = models.CharField(max_length=100, unique=True, blank=True)
-    barcode = models.CharField(max_length=100, blank=True)
-    
+    product_variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        related_name='inventory_items',
+    )
+    vendor = models.ForeignKey(
+        VendorProfile,
+        on_delete=models.CASCADE,
+        related_name='inventory_items',
+    )
+    quantity = models.PositiveIntegerField(default=0)
+    low_stock_threshold = models.PositiveIntegerField(default=10)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
+    last_updated = models.DateTimeField(auto_now=True)
+
     class Meta:
         indexes = [
-            models.Index(fields=['vendor', 'is_active']),
-            models.Index(fields=['sku']),
+            models.Index(fields=['vendor']),
             models.Index(fields=['tenant']),
+            models.Index(fields=['product_variant']),
         ]
-    
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'product_variant'],
+                name='unique_inventory_variant_per_tenant',
+            ),
+        ]
+
     @property
-    def available_quantity(self):
-        return self.quantity_available - self.reserved_quantity
-    
+    def is_active(self):
+        return self.product_variant.product.status == 'active'
+
+    @property
+    def is_low_stock(self):
+        return self.quantity <= self.low_stock_threshold
+
     def __str__(self):
-        return f"{self.product.name} - {self.vendor.store_name}"
+        return f'{self.product_variant} - {self.quantity} in stock'
