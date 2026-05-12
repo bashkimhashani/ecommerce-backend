@@ -51,3 +51,10 @@ class VendorOrderMarkShippedView(VendorOrderTransitionView):
     invalid_transition_message = (
         'Order cannot be marked shipped from its current status.'
     )
+
+
+class VendorOrderMarkDeliveredView(VendorOrderTransitionView):
+    transition_method = 'mark_delivered'
+    invalid_transition_message = (
+        'Order cannot be marked delivered from its current status.'
+    )
