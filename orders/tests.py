@@ -12,44 +12,83 @@ from .models import Order, OrderEvent
 
 
 class OrderStateMachineTests(SimpleTestCase):
-    def test_order_follows_fulfillment_state_machine(self):
-        order = Order(status=Order.Status.PENDING)
+    def test_all_valid_transitions_move_to_expected_statuses(self):
+        transitions = [
+            (
+                Order.Status.PENDING,
+                'confirm',
+                Order.Status.CONFIRMED,
+            ),
+            (
+                Order.Status.CONFIRMED,
+                'mark_processing',
+                Order.Status.PROCESSING,
+            ),
+            (
+                Order.Status.PROCESSING,
+                'mark_shipped',
+                Order.Status.SHIPPED,
+            ),
+            (
+                Order.Status.SHIPPED,
+                'mark_delivered',
+                Order.Status.DELIVERED,
+            ),
+            (
+                Order.Status.PENDING,
+                'cancel',
+                Order.Status.CANCELLED,
+            ),
+        ]
 
-        self.assertTrue(can_proceed(order.confirm))
-        order.confirm()
-        self.assertEqual(order.status, Order.Status.CONFIRMED)
+        for source, method_name, target in transitions:
+            with self.subTest(source=source, transition=method_name):
+                order = Order(status=source)
+                transition_method = getattr(order, method_name)
 
-        self.assertTrue(can_proceed(order.mark_processing))
-        order.mark_processing()
-        self.assertEqual(order.status, Order.Status.PROCESSING)
+                self.assertTrue(can_proceed(transition_method))
+                transition_method()
 
-        self.assertTrue(can_proceed(order.mark_shipped))
-        order.mark_shipped()
-        self.assertEqual(order.status, Order.Status.SHIPPED)
+                self.assertEqual(order.status, target)
 
-        self.assertTrue(can_proceed(order.mark_delivered))
-        order.mark_delivered()
-        self.assertEqual(order.status, Order.Status.DELIVERED)
+    def test_order_rejects_invalid_transitions(self):
+        invalid_transitions = [
+            (Order.Status.PENDING, 'mark_processing'),
+            (Order.Status.PENDING, 'mark_shipped'),
+            (Order.Status.PENDING, 'mark_delivered'),
+            (Order.Status.CONFIRMED, 'confirm'),
+            (Order.Status.CONFIRMED, 'mark_shipped'),
+            (Order.Status.CONFIRMED, 'mark_delivered'),
+            (Order.Status.CONFIRMED, 'cancel'),
+            (Order.Status.PROCESSING, 'confirm'),
+            (Order.Status.PROCESSING, 'mark_processing'),
+            (Order.Status.PROCESSING, 'mark_delivered'),
+            (Order.Status.PROCESSING, 'cancel'),
+            (Order.Status.SHIPPED, 'confirm'),
+            (Order.Status.SHIPPED, 'mark_processing'),
+            (Order.Status.SHIPPED, 'mark_shipped'),
+            (Order.Status.SHIPPED, 'cancel'),
+            (Order.Status.DELIVERED, 'confirm'),
+            (Order.Status.DELIVERED, 'mark_processing'),
+            (Order.Status.DELIVERED, 'mark_shipped'),
+            (Order.Status.DELIVERED, 'mark_delivered'),
+            (Order.Status.DELIVERED, 'cancel'),
+            (Order.Status.CANCELLED, 'confirm'),
+            (Order.Status.CANCELLED, 'mark_processing'),
+            (Order.Status.CANCELLED, 'mark_shipped'),
+            (Order.Status.CANCELLED, 'mark_delivered'),
+            (Order.Status.CANCELLED, 'cancel'),
+        ]
 
-    def test_order_can_be_cancelled_only_while_pending(self):
-        order = Order(status=Order.Status.PENDING)
+        for source, method_name in invalid_transitions:
+            with self.subTest(source=source, transition=method_name):
+                order = Order(status=source)
+                transition_method = getattr(order, method_name)
 
-        self.assertTrue(can_proceed(order.cancel))
-        order.cancel()
-        self.assertEqual(order.status, Order.Status.CANCELLED)
-
-        with self.assertRaises(TransitionNotAllowed):
-            order.confirm()
-
-    def test_order_rejects_out_of_order_transitions(self):
-        order = Order(status=Order.Status.PENDING)
-
-        with self.assertRaises(TransitionNotAllowed):
-            order.mark_shipped()
-
-        order.confirm()
-        with self.assertRaises(TransitionNotAllowed):
-            order.mark_delivered()
+                self.assertFalse(can_proceed(transition_method))
+                with self.assertRaises(TransitionNotAllowed):
+                    transition_method()
+                self.assertEqual(order.status, source)
 
 
 class OrderEventAuditTrailTests(TestCase):
