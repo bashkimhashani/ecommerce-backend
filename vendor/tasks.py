@@ -5,6 +5,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.utils import timezone
 from .models import VendorProfile
+from .order_reports import vendor_order_items
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -13,14 +14,11 @@ User = get_user_model()
 def export_vendor_orders_csv(self, vendor_id, user_id):
     try:
         vendor = VendorProfile.objects.get(id=vendor_id)
-        user = User.objects.get(id=user_id)
-        
-        from orders.models import OrderItem
-        
-        order_items = OrderItem.objects.filter(
-            product__inventory__vendor=vendor,
-            order__tenant=vendor.tenant
-        ).select_related('order', 'product')
+        User.objects.get(id=user_id)
+        order_items = vendor_order_items(vendor)
+
+        if order_items is None:
+            order_items = []
         
         output = io.StringIO()
         writer = csv.writer(output)
@@ -31,15 +29,16 @@ def export_vendor_orders_csv(self, vendor_id, user_id):
         ])
         
         for item in order_items:
+            product_name = get_order_item_product_name(item)
             writer.writerow([
                 item.order.id,
                 item.order.created_at.strftime('%Y-%m-%d %H:%M:%S'),
                 item.order.status,
-                f"{item.order.first_name} {item.order.last_name}",
-                item.order.email,
-                item.product.name,
+                get_order_customer_name(item.order),
+                getattr(item.order, 'email', ''),
+                product_name,
                 item.quantity,
-                item.price,
+                get_order_item_unit_price(item),
                 item.subtotal,
                 item.order.total_amount
             ])
@@ -53,10 +52,41 @@ def export_vendor_orders_csv(self, vendor_id, user_id):
             'status': 'success',
             'file_path': saved_path,
             'download_url': download_url,
-            'row_count': order_items.count(),
+            'row_count': count_order_items(order_items),
             'exported_at': str(timezone.now())
         }
         
     except Exception as e:
         self.update_state(state='FAILURE', meta={'error': str(e)})
         raise e
+
+
+def count_order_items(order_items):
+    if hasattr(order_items, 'count'):
+        return order_items.count()
+    return len(order_items)
+
+
+def get_order_customer_name(order):
+    full_name = ' '.join(
+        value for value in [
+            getattr(order, 'first_name', ''),
+            getattr(order, 'last_name', ''),
+        ]
+        if value
+    )
+    return full_name or getattr(order, 'customer_name', '')
+
+
+def get_order_item_product_name(item):
+    if hasattr(item, 'product_variant'):
+        return item.product_variant.product.name
+    if hasattr(item, 'variant'):
+        return item.variant.product.name
+    if hasattr(item, 'product'):
+        return item.product.name
+    return ''
+
+
+def get_order_item_unit_price(item):
+    return getattr(item, 'price', getattr(item, 'unit_price', ''))

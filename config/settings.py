@@ -122,6 +122,7 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': (
         'django_filters.rest_framework.DjangoFilterBackend',
     ),
+    'URL_FORMAT_OVERRIDE': None,
 }
 
 SIMPLE_JWT = {
