@@ -286,6 +286,15 @@ class CheckoutSessionEndpointTests(APITestCase):
         self.assertFalse(Order.objects.exists())
         self.assertFalse(OrderItem.objects.exists())
 
+    def test_clear_cart_marks_checked_out_and_removes_items(self):
+        cart = self._create_cart_with_item()
+
+        OrderCreationService._clear_cart(cart)
+
+        cart.refresh_from_db()
+        self.assertEqual(cart.status, Cart.Status.CHECKED_OUT)
+        self.assertFalse(cart.items.exists())
+
     def test_lock_product_variant_uses_select_for_update(self):
         product_variant_manager = Mock()
         locked_product_variant = Mock()

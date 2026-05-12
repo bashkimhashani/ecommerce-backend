@@ -64,10 +64,14 @@ class OrderCreationService:
         checkout_session.status = CheckoutSession.Status.COMPLETED
         checkout_session.save(update_fields=['status', 'updated_at'])
 
+        cls._clear_cart(cart)
+        return order
+
+    @staticmethod
+    def _clear_cart(cart):
         cart.status = Cart.Status.CHECKED_OUT
         cart.save(update_fields=['status', 'updated_at'])
         cart.items.all().delete()
-        return order
 
     @staticmethod
     def _lock_product_variant(cart_item):
