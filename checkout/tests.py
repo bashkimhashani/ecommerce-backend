@@ -5,10 +5,12 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from cart.models import Cart, CartItem
+from orders.models import Order, OrderItem
 from tenants.models import Tenant
 
 from .models import CheckoutSession
 from .serializers import AddressSerializer
+from .services import InsufficientStockError, OrderCreationService
 
 
 User = get_user_model()
@@ -206,6 +208,80 @@ class CheckoutSessionEndpointTests(APITestCase):
         self.assertIn('phone', serializer.errors)
         self.assertIn('postal_code', serializer.errors)
         self.assertIn('country', serializer.errors)
+
+    def test_create_from_checkout_creates_order_atomically(self):
+        cart = self._create_cart_with_item()
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            shipping_address=self._address_payload(),
+            status=CheckoutSession.Status.READY,
+            tenant=self.tenant,
+        )
+        product_variant = cart.items.get().product_variant
+
+        order = OrderCreationService.create_from_checkout(checkout_session)
+
+        self.assertEqual(order.checkout_session, checkout_session)
+        self.assertEqual(order.user, self.user)
+        self.assertEqual(order.status, Order.Status.PENDING)
+        self.assertEqual(order.items.count(), 1)
+        order_item = order.items.get()
+        self.assertEqual(order_item.product_variant, product_variant)
+        self.assertEqual(order_item.quantity, 1)
+        self.assertEqual(order_item.product_name, 'Phone Pro')
+        checkout_session.refresh_from_db()
+        cart.refresh_from_db()
+        product_variant.refresh_from_db()
+        self.assertEqual(checkout_session.status, CheckoutSession.Status.COMPLETED)
+        self.assertEqual(cart.status, Cart.Status.CHECKED_OUT)
+        self.assertFalse(cart.items.exists())
+        self.assertEqual(product_variant.stock_quantity, 4)
+
+    def test_create_from_checkout_is_idempotent_for_existing_order(self):
+        cart = self._create_cart_with_item()
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            shipping_address=self._address_payload(),
+            status=CheckoutSession.Status.READY,
+            tenant=self.tenant,
+        )
+
+        first_order = OrderCreationService.create_from_checkout(checkout_session)
+        second_order = OrderCreationService.create_from_checkout(checkout_session)
+
+        self.assertEqual(first_order, second_order)
+        self.assertEqual(Order.objects.count(), 1)
+        self.assertEqual(OrderItem.objects.count(), 1)
+
+    def test_create_from_checkout_rolls_back_when_stock_is_insufficient(self):
+        cart = self._create_cart_with_item()
+        cart_item = cart.items.get()
+        product_variant = cart_item.product_variant
+        product_variant.stock_quantity = 0
+        product_variant.save(update_fields=['stock_quantity'])
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            shipping_address=self._address_payload(),
+            status=CheckoutSession.Status.READY,
+            tenant=self.tenant,
+        )
+
+        with self.assertRaises(InsufficientStockError):
+            OrderCreationService.create_from_checkout(checkout_session)
+
+        checkout_session.refresh_from_db()
+        cart.refresh_from_db()
+        self.assertEqual(checkout_session.status, CheckoutSession.Status.READY)
+        self.assertEqual(cart.status, Cart.Status.ACTIVE)
+        self.assertTrue(cart.items.exists())
+        self.assertFalse(Order.objects.exists())
+        self.assertFalse(OrderItem.objects.exists())
 
     def test_patch_checkout_session_address_rejects_blank_required_fields(self):
         cart = self._create_cart_with_item()
