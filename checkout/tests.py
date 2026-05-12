@@ -280,9 +280,12 @@ class CheckoutSessionEndpointTests(APITestCase):
 
         checkout_session.refresh_from_db()
         cart.refresh_from_db()
+        product_variant.refresh_from_db()
         self.assertEqual(checkout_session.status, CheckoutSession.Status.READY)
         self.assertEqual(cart.status, Cart.Status.ACTIVE)
-        self.assertTrue(cart.items.exists())
+        self.assertEqual(cart.items.count(), 1)
+        self.assertEqual(cart.items.get().quantity, cart_item.quantity)
+        self.assertEqual(product_variant.stock_quantity, 0)
         self.assertFalse(Order.objects.exists())
         self.assertFalse(OrderItem.objects.exists())
 
