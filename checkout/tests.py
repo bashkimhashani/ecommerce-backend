@@ -1,5 +1,8 @@
+import os
+import socket
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from urllib.parse import urlparse
 
 import stripe
 from django.apps import apps
@@ -499,6 +502,78 @@ class CheckoutSessionEndpointTests(APITestCase):
     def test_amount_to_cents_rounds_decimal_amount(self):
         self.assertEqual(PaymentIntentService._amount_to_cents('19.995'), 2000)
 
+    @override_settings(STRIPE_SECRET_KEY='sk_test_123')
+    def test_payment_intent_success_with_stripe_mock(self):
+        self._skip_unless_stripe_mock_available()
+        cart = self._create_cart_with_item()
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            shipping_address=self._address_payload(),
+            status=CheckoutSession.Status.READY,
+            tenant=self.tenant,
+        )
+
+        with self._stripe_mock_client():
+            response = self.client.post(
+                reverse(
+                    'checkout-session-payment-intent',
+                    args=[checkout_session.id],
+                ),
+                {},
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['payment_intent_id'])
+        self.assertTrue(response.data['client_secret'])
+        self.assertEqual(response.data['amount'], 99900)
+        self.assertEqual(response.data['currency'], 'usd')
+
+    @override_settings(STRIPE_SECRET_KEY='sk_test_123')
+    @patch('checkout.services.stripe.PaymentIntent.create')
+    def test_payment_intent_card_decline_returns_gateway_error(
+        self,
+        create_payment_intent,
+    ):
+        cart = self._create_cart_with_item()
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            shipping_address=self._address_payload(),
+            status=CheckoutSession.Status.READY,
+            tenant=self.tenant,
+        )
+        create_payment_intent.side_effect = stripe.CardError(
+            message='Your card was declined.',
+            param='payment_method',
+            code='card_declined',
+            http_status=402,
+            json_body={
+                'error': {
+                    'code': 'card_declined',
+                    'decline_code': 'generic_decline',
+                    'message': 'Your card was declined.',
+                    'type': 'card_error',
+                },
+            },
+        )
+
+        response = self.client.post(
+            reverse(
+                'checkout-session-payment-intent',
+                args=[checkout_session.id],
+            ),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn('declined', response.data['detail'])
+        self.assertFalse(Order.objects.exists())
+
     @override_settings(STRIPE_WEBHOOK_SECRET='whsec_test_123')
     @patch('checkout.views.stripe.Webhook.construct_event')
     def test_post_stripe_webhook_creates_confirmed_order(
@@ -653,3 +728,40 @@ class CheckoutSessionEndpointTests(APITestCase):
             stock_quantity=5,
             tenant=self.tenant,
         )
+
+    def _skip_unless_stripe_mock_available(self):
+        stripe_mock_url = self._stripe_mock_url()
+        parsed_url = urlparse(stripe_mock_url)
+        host = parsed_url.hostname or 'localhost'
+        port = parsed_url.port or (443 if parsed_url.scheme == 'https' else 80)
+
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return
+        except OSError:
+            self.skipTest(
+                f'stripe-mock is not available at {stripe_mock_url}.',
+            )
+
+    def _stripe_mock_client(self):
+        test_case = self
+
+        class StripeMockClient:
+            def __enter__(self):
+                self.previous_api_base = stripe.api_base
+                self.previous_api_key = stripe.api_key
+                stripe.api_base = test_case._stripe_mock_url()
+                stripe.api_key = 'sk_test_123'
+
+            def __exit__(self, exc_type, exc, traceback):
+                stripe.api_base = self.previous_api_base
+                stripe.api_key = self.previous_api_key
+
+        return StripeMockClient()
+
+    @staticmethod
+    def _stripe_mock_url():
+        return os.environ.get(
+            'STRIPE_MOCK_BASE_URL',
+            'http://localhost:12111',
+        ).rstrip('/')
