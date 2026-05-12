@@ -1,12 +1,28 @@
 from pathlib import Path
-from decouple import config
 from datetime import timedelta
+
+import environ
+import stripe
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY')
-DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost').split(',')
+env = environ.Env(
+    DEBUG=(bool, False),
+    ALLOWED_HOSTS=(list, ['localhost']),
+    CORS_ALLOWED_ORIGINS=(list, ['http://localhost:5173']),
+    DB_HOST=(str, 'db'),
+    DB_PORT=(str, '5432'),
+    REDIS_URL=(str, 'redis://redis:6379/0'),
+    CACHE_KEY_PREFIX=(str, 'ecommerce'),
+    STRIPE_SECRET_KEY=(str, ''),
+    STRIPE_PUBLISHABLE_KEY=(str, ''),
+    STRIPE_WEBHOOK_SECRET=(str, ''),
+)
+environ.Env.read_env(BASE_DIR / '.env')
+
+SECRET_KEY = env('SECRET_KEY')
+DEBUG = env('DEBUG')
+ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -72,11 +88,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('POSTGRES_DB'),
-        'USER': config('POSTGRES_USER'),
-        'PASSWORD': config('POSTGRES_PASSWORD'),
-        'HOST': config('DB_HOST', default='db'),
-        'PORT': config('DB_PORT', default='5432'),
+        'NAME': env('POSTGRES_DB'),
+        'USER': env('POSTGRES_USER'),
+        'PASSWORD': env('POSTGRES_PASSWORD'),
+        'HOST': env('DB_HOST'),
+        'PORT': env('DB_PORT'),
     }
 }
 
@@ -97,10 +113,10 @@ MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:5173').split(',')
+CORS_ALLOWED_ORIGINS = env('CORS_ALLOWED_ORIGINS')
 
-REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
-CACHE_KEY_PREFIX = config('CACHE_KEY_PREFIX', default='ecommerce')
+REDIS_URL = env('REDIS_URL')
+CACHE_KEY_PREFIX = env('CACHE_KEY_PREFIX')
 
 CACHES = {
     'default': {
@@ -113,6 +129,11 @@ CACHES = {
         },
     },
 }
+
+STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY')
+STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY')
+STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET')
+stripe.api_key = STRIPE_SECRET_KEY
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
