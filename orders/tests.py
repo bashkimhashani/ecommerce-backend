@@ -216,6 +216,94 @@ class VendorOrderConfirmEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_vendor_can_mark_processing_order_shipped(self):
+        order = self._create_order()
+        order.confirm()
+        order.mark_processing()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-mark-shipped', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], Order.Status.SHIPPED)
+        updated_order = Order.objects.get(pk=order.pk)
+        self.assertEqual(updated_order.status, Order.Status.SHIPPED)
+        self.assertTrue(
+            updated_order.events.filter(
+                from_status=Order.Status.PROCESSING,
+                to_status=Order.Status.SHIPPED,
+                transition='mark_shipped',
+            ).exists(),
+        )
+
+    def test_vendor_mark_shipped_rejects_non_processing_order(self):
+        order = self._create_order()
+        order.confirm()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-mark-shipped', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('marked shipped', response.data['detail'])
+
+    def test_vendor_mark_shipped_requires_vendor_admin_role(self):
+        order = self._create_order()
+        order.confirm()
+        order.mark_processing()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            reverse('vendor-order-mark-shipped', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_vendor_mark_shipped_returns_not_found_for_other_tenant_order(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Store',
+            slug='other-store-ship',
+            domain='ship.other.example.com',
+            plan='basic',
+        )
+        other_customer = User.objects.create_user(
+            email='ship-other-customer@example.com',
+            password='StrongPass123',
+            first_name='Other',
+            last_name='Customer',
+            role='customer',
+            tenant=other_tenant,
+        )
+        order = self._create_order(
+            user=other_customer,
+            tenant=other_tenant,
+            idempotency_key='ship-other-checkout-key',
+        )
+        order.confirm()
+        order.mark_processing()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-mark-shipped', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
     def _create_order(
         self,
         user=None,
