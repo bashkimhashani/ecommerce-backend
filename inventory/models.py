@@ -42,7 +42,7 @@ class Inventory(TenantModel):
 
     @property
     def is_low_stock(self):
-        return self.quantity <= self.low_stock_threshold
+        return self.quantity < self.low_stock_threshold
 
     def __str__(self):
         return f'{self.product_variant} - {self.quantity} in stock'

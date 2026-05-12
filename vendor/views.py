@@ -80,7 +80,7 @@ class VendorDashboardSummaryView(APIView):
             'product_variant__product',
         )
         low_stock_items = inventory.filter(
-            quantity__lte=F('low_stock_threshold'),
+            quantity__lt=F('low_stock_threshold'),
         )
         orders = get_vendor_order_queryset(vendor)
         order_count = 0
