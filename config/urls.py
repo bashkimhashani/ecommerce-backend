@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/v1/users/', include('users.profile_urls')),
     path('api/v1/tenants/', include('tenants.urls')),
     path('api/v1/cart/', include('cart.urls')),
+    path('api/v1/checkout/', include('checkout.urls')),
     path('api/v1/vendor/', include('vendor.urls')),
 
     # Swagger

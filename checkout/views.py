@@ -8,6 +8,7 @@ from users.permissions import IsCustomer
 
 from .models import CheckoutSession
 from .serializers import (
+    AddressSerializer,
     CheckoutSessionCreateSerializer,
     CheckoutSessionSerializer,
 )
@@ -59,3 +60,30 @@ class CheckoutSessionCreateView(APIView):
             CheckoutSessionSerializer(checkout_session).data,
             status=response_status,
         )
+
+
+class CheckoutSessionAddressUpdateView(APIView):
+    permission_classes = [IsCustomer]
+
+    def patch(self, request, session_id):
+        checkout_session = CheckoutSession.objects.filter(
+            pk=session_id,
+            user=request.user,
+        ).first()
+        if checkout_session is None:
+            return Response(
+                {'detail': 'Checkout session not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = AddressSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        checkout_session.shipping_address = serializer.validated_data
+        update_fields = ['shipping_address', 'updated_at']
+        if checkout_session.status == CheckoutSession.Status.PENDING:
+            checkout_session.status = CheckoutSession.Status.READY
+            update_fields.append('status')
+
+        checkout_session.save(update_fields=update_fields)
+        return Response(CheckoutSessionSerializer(checkout_session).data)
