@@ -1,11 +1,14 @@
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
+from unittest.mock import Mock, patch
 
 from catalog.models import Brand, Category, Product, ProductVariant
 from inventory.models import Inventory
 from tenants.models import Tenant
+from .order_reports import vendor_order_summary_rows
 from .models import VendorProfile
 
 User = get_user_model()
@@ -178,3 +181,153 @@ class VendorInventoryEndpointTests(TestCase):
         response = self.client.get('/api/v1/vendor/inventory/')
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @patch('vendor.views.vendor_order_summary_rows')
+    def test_order_summary_endpoint_returns_grouped_status_counts(self, mock_summary):
+        cache.clear()
+        mock_summary.return_value = [
+            {'status': 'paid', 'count': 2, 'total_amount': '250.00'},
+            {'status': 'shipped', 'count': 1, 'total_amount': '80.00'},
+        ]
+
+        response = self.client.get('/api/v1/vendor/orders/summary/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data[0]['status'], 'paid')
+        self.assertEqual(response.data[0]['count'], 2)
+        self.assertEqual(str(response.data[0]['total_amount']), '250.00')
+        mock_summary.assert_called_once_with(self.vendor)
+
+    @patch('vendor.tasks.export_vendor_orders_csv.delay')
+    def test_orders_export_queues_csv_task(self, mock_delay):
+        mock_task = Mock()
+        mock_task.id = 'export-task-123'
+        mock_delay.return_value = mock_task
+
+        response = self.client.get('/api/v1/vendor/orders/export/?format=csv')
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data['task_id'], 'export-task-123')
+        self.assertEqual(response.data['status'], 'queued')
+        mock_delay.assert_called_once_with(self.vendor.id, self.user.id)
+
+    def test_orders_export_rejects_non_csv_format(self):
+        response = self.client.get('/api/v1/vendor/orders/export/?format=pdf')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class FakeField:
+    def __init__(self, name):
+        self.name = name
+
+
+class FakeOrderItemMeta:
+    @staticmethod
+    def get_fields():
+        return [
+            FakeField('order'),
+            FakeField('product_variant'),
+            FakeField('subtotal'),
+        ]
+
+
+class FakeSummaryValues:
+    def __init__(self):
+        self.values_args = None
+        self.annotate_kwargs = None
+        self.order_by_args = None
+
+    def annotate(self, **kwargs):
+        self.annotate_kwargs = kwargs
+        return self
+
+    def order_by(self, *args):
+        self.order_by_args = args
+        return [
+            {
+                'order__status': 'paid',
+                'count': 2,
+                'total_amount': 250,
+            },
+            {
+                'order__status': 'shipped',
+                'count': 1,
+                'total_amount': 80,
+            },
+        ]
+
+
+class FakeOrderItemQuerySet:
+    def __init__(self):
+        self.select_related_args = None
+        self.summary_values = FakeSummaryValues()
+
+    def select_related(self, *args):
+        self.select_related_args = args
+        return self
+
+    def values(self, *args):
+        self.summary_values.values_args = args
+        return self.summary_values
+
+
+class FakeOrderItemManager:
+    def __init__(self):
+        self.filter_kwargs = None
+        self.queryset = FakeOrderItemQuerySet()
+
+    def filter(self, **kwargs):
+        self.filter_kwargs = kwargs
+        return self.queryset
+
+
+class FakeOrderItemModel:
+    _meta = FakeOrderItemMeta()
+    objects = FakeOrderItemManager()
+
+
+class VendorOrderReportHelperTests(TestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Reports Tenant',
+            slug='reports-tenant',
+            domain='reports.local',
+        )
+        self.user = User.objects.create_user(
+            email='reports-vendor@test.com',
+            password='testpass123',
+            first_name='Reports',
+            last_name='Vendor',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        self.vendor = VendorProfile.objects.create(
+            user=self.user,
+            tenant=self.tenant,
+            store_name='Reports Store',
+            contact_email='reports-store@test.com',
+        )
+
+    @patch('vendor.order_reports.get_order_item_model')
+    def test_summary_helper_groups_by_order_status_for_vendor_items(self, mock_model):
+        FakeOrderItemModel.objects = FakeOrderItemManager()
+        mock_model.return_value = FakeOrderItemModel
+
+        rows = vendor_order_summary_rows(self.vendor)
+
+        self.assertEqual(rows, [
+            {'status': 'paid', 'count': 2, 'total_amount': '250'},
+            {'status': 'shipped', 'count': 1, 'total_amount': '80'},
+        ])
+        self.assertEqual(
+            FakeOrderItemModel.objects.filter_kwargs,
+            {
+                'order__tenant': self.tenant,
+                'product_variant__inventory_items__vendor': self.vendor,
+            },
+        )
+        queryset = FakeOrderItemModel.objects.queryset
+        self.assertEqual(queryset.select_related_args, ('order',))
+        self.assertEqual(queryset.summary_values.values_args, ('order__status',))
+        self.assertEqual(queryset.summary_values.order_by_args, ('order__status',))

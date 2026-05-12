@@ -1,8 +1,5 @@
-from decimal import Decimal
-
-from django.apps import apps
 from django.core.cache import cache
-from django.db.models import Count, F, Sum
+from django.db.models import F
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -12,6 +9,11 @@ from inventory.models import Inventory
 from inventory.serializers import InventorySerializer
 from users.permissions import IsVendorAdmin
 from .models import VendorProfile
+from .order_reports import (
+    serialize_decimal,
+    vendor_order_summary_rows,
+    vendor_order_totals,
+)
 from .serializers import OrderSummarySerializer
 
 
@@ -20,33 +22,6 @@ def get_vendor_for_request(request):
         user=request.user,
         tenant=request.user.tenant,
     )
-
-
-def get_order_model():
-    try:
-        return apps.get_model('orders', 'Order')
-    except LookupError:
-        return None
-
-
-def get_order_item_model():
-    try:
-        return apps.get_model('orders', 'OrderItem')
-    except LookupError:
-        return None
-
-
-def get_vendor_order_queryset(vendor):
-    Order = get_order_model()
-
-    if Order is None:
-        return None
-
-    return Order.objects.filter(tenant=vendor.tenant)
-
-
-def serialize_decimal(value):
-    return str(value or Decimal('0.00'))
 
 
 class VendorDashboardSummaryView(APIView):
@@ -82,21 +57,11 @@ class VendorDashboardSummaryView(APIView):
         low_stock_items = inventory.filter(
             quantity__lt=F('low_stock_threshold'),
         )
-        orders = get_vendor_order_queryset(vendor)
-        order_count = 0
-        revenue = Decimal('0.00')
-
-        if orders is not None:
-            order_totals = orders.aggregate(
-                order_count=Count('id'),
-                revenue=Sum('total_amount'),
-            )
-            order_count = order_totals['order_count'] or 0
-            revenue = order_totals['revenue'] or Decimal('0.00')
+        order_totals = vendor_order_totals(vendor)
 
         return Response({
-            'order_count': order_count,
-            'revenue': serialize_decimal(revenue),
+            'order_count': order_totals['order_count'],
+            'revenue': serialize_decimal(order_totals['revenue']),
             'low_stock_alerts': low_stock_items.count(),
             'low_stock_items': InventorySerializer(low_stock_items, many=True).data,
         })
@@ -192,9 +157,16 @@ class VendorOrderSummaryView(APIView):
     Returns order counts grouped by status for the authenticated vendor
     """
     permission_classes = [IsVendorAdmin]
+
+    @extend_schema(
+        tags=['Vendor Orders'],
+        responses={
+            200: OrderSummarySerializer(many=True),
+            404: OpenApiResponse(description='Vendor profile not found.'),
+        },
+    )
     
     def get(self, request):
-        # Get vendor profile
         try:
             vendor = get_vendor_for_request(request)
         except VendorProfile.DoesNotExist:
@@ -207,36 +179,10 @@ class VendorOrderSummaryView(APIView):
         cache_key = f'vendor_order_summary_{vendor.id}'
         cached_data = cache.get(cache_key)
         
-        if cached_data:
+        if cached_data is not None:
             return Response(cached_data)
-        
-        OrderItem = get_order_item_model()
 
-        if OrderItem is None:
-            cache.set(cache_key, [], 300)
-            return Response([])
-
-        order_items = OrderItem.objects.filter(
-            product__inventory_items__vendor=vendor,
-            order__tenant=vendor.tenant
-        ).select_related('order')
-        
-        # Aggregate by order status
-        summary = order_items.values('order__status').annotate(
-            count=Count('order_id', distinct=True),
-            total_amount=Sum('subtotal')
-        )
-        
-        # Format response
-        result = []
-        for item in summary:
-            result.append({
-                'status': item['order__status'],
-                'count': item['count'],
-                'total_amount': str(item['total_amount'] or '0')
-            })
-        
-        # Cache for 5 minutes
+        result = vendor_order_summary_rows(vendor)
         cache.set(cache_key, result, 300)
         
         serializer = OrderSummarySerializer(result, many=True)
@@ -249,6 +195,15 @@ class VendorOrdersExportView(APIView):
     Initiates async CSV export via Celery
     """
     permission_classes = [IsVendorAdmin]
+
+    @extend_schema(
+        tags=['Vendor Orders'],
+        responses={
+            202: OpenApiResponse(description='CSV export task queued.'),
+            400: OpenApiResponse(description='Only CSV format is supported.'),
+            404: OpenApiResponse(description='Vendor profile not found.'),
+        },
+    )
     
     def get(self, request):
         format_param = request.query_params.get('format', 'csv')
