@@ -1,8 +1,10 @@
 import uuid
 
 from django.conf import settings
+from django.dispatch import receiver
 from django.db import models
 from django_fsm import FSMField, transition
+from django_fsm.signals import post_transition
 
 from tenants.mixins import TenantModel
 
@@ -118,3 +120,47 @@ class OrderItem(TenantModel):
 
     def __str__(self):
         return f'{self.quantity} x {self.product_name}'
+
+
+class OrderEvent(TenantModel):
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='events',
+    )
+    from_status = models.CharField(max_length=20, blank=True)
+    to_status = models.CharField(max_length=20)
+    transition = models.CharField(max_length=100)
+    note = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['tenant', 'order']),
+            models.Index(fields=['tenant', 'to_status']),
+            models.Index(fields=['created_at']),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.order_id and self.tenant_id is None:
+            self.tenant = self.order.tenant
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.order} {self.from_status} -> {self.to_status}'
+
+
+@receiver(post_transition, sender=Order)
+def create_order_event(sender, instance, name, source, target, **kwargs):
+    if not instance.pk:
+        return
+
+    OrderEvent.objects.create(
+        order=instance,
+        from_status=source or '',
+        to_status=target,
+        transition=name,
+        tenant=instance.tenant,
+    )
