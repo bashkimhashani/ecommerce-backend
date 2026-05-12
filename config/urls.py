@@ -5,6 +5,8 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from checkout.views import StripeWebhookView
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/auth/', include('users.urls')),
@@ -13,6 +15,11 @@ urlpatterns = [
     path('api/v1/tenants/', include('tenants.urls')),
     path('api/v1/cart/', include('cart.urls')),
     path('api/v1/checkout/', include('checkout.urls')),
+    path(
+        'api/v1/webhooks/stripe/',
+        StripeWebhookView.as_view(),
+        name='stripe-webhook',
+    ),
     path('api/v1/vendor/', include('vendor.urls')),
 
     # Swagger

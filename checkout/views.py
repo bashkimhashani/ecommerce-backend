@@ -1,5 +1,8 @@
+from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 import stripe
+from rest_framework.permissions import AllowAny
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,7 +16,22 @@ from .serializers import (
     CheckoutSessionCreateSerializer,
     CheckoutSessionSerializer,
 )
-from .services import PaymentIntentService, StripeConfigurationError
+from .services import (
+    PaymentIntentService,
+    StripeConfigurationError,
+    StripeWebhookService,
+    stripe_value,
+)
+
+
+STRIPE_SIGNATURE_VERIFICATION_ERRORS = tuple(
+    error_type
+    for error_type in (
+        getattr(stripe, 'SignatureVerificationError', None),
+        getattr(getattr(stripe, 'error', None), 'SignatureVerificationError', None),
+    )
+    if error_type is not None
+)
 
 
 class CheckoutSessionCreateView(APIView):
@@ -147,17 +165,54 @@ class CheckoutSessionPaymentIntentView(APIView):
             )
 
         return Response({
-            'payment_intent_id': payment_intent_value(payment_intent, 'id'),
-            'client_secret': payment_intent_value(
+            'payment_intent_id': stripe_value(payment_intent, 'id'),
+            'client_secret': stripe_value(
                 payment_intent,
                 'client_secret',
             ),
-            'amount': payment_intent_value(payment_intent, 'amount'),
-            'currency': payment_intent_value(payment_intent, 'currency'),
+            'amount': stripe_value(payment_intent, 'amount'),
+            'currency': stripe_value(payment_intent, 'currency'),
         })
 
 
-def payment_intent_value(value, key):
-    if isinstance(value, dict):
-        return value.get(key)
-    return getattr(value, key, None)
+class StripeWebhookView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        webhook_secret = settings.STRIPE_WEBHOOK_SECRET
+        if not webhook_secret:
+            return Response(
+                {'detail': 'Stripe webhook secret is not configured.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        signature = request.headers.get('Stripe-Signature')
+        try:
+            event = stripe.Webhook.construct_event(
+                payload=request.body,
+                sig_header=signature,
+                secret=webhook_secret,
+            )
+            order = StripeWebhookService.handle_event(event)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except STRIPE_SIGNATURE_VERIFICATION_ERRORS:
+            return Response(
+                {'detail': 'Invalid Stripe webhook signature.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ObjectDoesNotExist:
+            return Response(
+                {'detail': 'Checkout session not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        response_data = {'received': True}
+        if order is not None:
+            response_data['order_number'] = order.order_number
+            response_data['order_status'] = order.status
+        return Response(response_data)

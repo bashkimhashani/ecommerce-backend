@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import stripe
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.test import override_settings
@@ -18,6 +19,7 @@ from .services import (
     InsufficientStockError,
     OrderCreationService,
     PaymentIntentService,
+    StripeWebhookService,
 )
 
 
@@ -496,6 +498,98 @@ class CheckoutSessionEndpointTests(APITestCase):
 
     def test_amount_to_cents_rounds_decimal_amount(self):
         self.assertEqual(PaymentIntentService._amount_to_cents('19.995'), 2000)
+
+    @override_settings(STRIPE_WEBHOOK_SECRET='whsec_test_123')
+    @patch('checkout.views.stripe.Webhook.construct_event')
+    def test_post_stripe_webhook_creates_confirmed_order(
+        self,
+        construct_event,
+    ):
+        cart = self._create_cart_with_item()
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            shipping_address=self._address_payload(),
+            status=CheckoutSession.Status.READY,
+            tenant=self.tenant,
+        )
+        construct_event.return_value = {
+            'type': 'payment_intent.succeeded',
+            'data': {
+                'object': {
+                    'id': 'pi_test_123',
+                    'metadata': {
+                        'checkout_session_id': str(checkout_session.id),
+                    },
+                },
+            },
+        }
+
+        response = self.client.post(
+            reverse('stripe-webhook'),
+            data=b'{"id":"evt_test_123"}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='test-signature',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order = Order.objects.get(checkout_session=checkout_session)
+        self.assertEqual(order.status, Order.Status.CONFIRMED)
+        self.assertEqual(response.data['order_number'], order.order_number)
+        self.assertEqual(response.data['order_status'], Order.Status.CONFIRMED)
+        construct_event.assert_called_once_with(
+            payload=b'{"id":"evt_test_123"}',
+            sig_header='test-signature',
+            secret='whsec_test_123',
+        )
+
+    @override_settings(STRIPE_WEBHOOK_SECRET='whsec_test_123')
+    @patch('checkout.views.stripe.Webhook.construct_event')
+    def test_post_stripe_webhook_rejects_invalid_signature(
+        self,
+        construct_event,
+    ):
+        stripe_error_module = getattr(stripe, 'error', None)
+        signature_error = (
+            getattr(stripe, 'SignatureVerificationError', None)
+            or getattr(stripe_error_module, 'SignatureVerificationError')
+        )
+        construct_event.side_effect = signature_error(
+            'Invalid signature',
+            'test-signature',
+        )
+
+        response = self.client.post(
+            reverse('stripe-webhook'),
+            data=b'{"id":"evt_test_123"}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='bad-signature',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('signature', response.data['detail'])
+        self.assertFalse(Order.objects.exists())
+
+    @override_settings(STRIPE_WEBHOOK_SECRET='')
+    def test_post_stripe_webhook_requires_configured_secret(self):
+        response = self.client.post(
+            reverse('stripe-webhook'),
+            data=b'{"id":"evt_test_123"}',
+            content_type='application/json',
+            HTTP_STRIPE_SIGNATURE='test-signature',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertIn('not configured', response.data['detail'])
+
+    def test_stripe_webhook_service_ignores_unhandled_events(self):
+        result = StripeWebhookService.handle_event({
+            'type': 'payment_intent.created',
+            'data': {'object': {'metadata': {}}},
+        })
+
+        self.assertIsNone(result)
 
     def _address_payload(self):
         return {
