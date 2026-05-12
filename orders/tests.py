@@ -304,6 +304,98 @@ class VendorOrderConfirmEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_vendor_can_mark_shipped_order_delivered(self):
+        order = self._create_order()
+        order.confirm()
+        order.mark_processing()
+        order.mark_shipped()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-mark-delivered', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], Order.Status.DELIVERED)
+        updated_order = Order.objects.get(pk=order.pk)
+        self.assertEqual(updated_order.status, Order.Status.DELIVERED)
+        self.assertTrue(
+            updated_order.events.filter(
+                from_status=Order.Status.SHIPPED,
+                to_status=Order.Status.DELIVERED,
+                transition='mark_delivered',
+            ).exists(),
+        )
+
+    def test_vendor_mark_delivered_rejects_non_shipped_order(self):
+        order = self._create_order()
+        order.confirm()
+        order.mark_processing()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-mark-delivered', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('marked delivered', response.data['detail'])
+
+    def test_vendor_mark_delivered_requires_vendor_admin_role(self):
+        order = self._create_order()
+        order.confirm()
+        order.mark_processing()
+        order.mark_shipped()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            reverse('vendor-order-mark-delivered', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_vendor_mark_delivered_returns_not_found_for_other_tenant_order(self):
+        other_tenant = Tenant.objects.create(
+            name='Other Delivered Store',
+            slug='other-delivered-store',
+            domain='delivered.other.example.com',
+            plan='basic',
+        )
+        other_customer = User.objects.create_user(
+            email='delivered-other-customer@example.com',
+            password='StrongPass123',
+            first_name='Other',
+            last_name='Customer',
+            role='customer',
+            tenant=other_tenant,
+        )
+        order = self._create_order(
+            user=other_customer,
+            tenant=other_tenant,
+            idempotency_key='delivered-other-checkout-key',
+        )
+        order.confirm()
+        order.mark_processing()
+        order.mark_shipped()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('vendor-order-mark-delivered', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
     def _create_order(
         self,
         user=None,
