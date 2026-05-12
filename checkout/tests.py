@@ -1,8 +1,9 @@
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -13,7 +14,11 @@ from tenants.models import Tenant
 
 from .models import CheckoutSession
 from .serializers import AddressSerializer
-from .services import InsufficientStockError, OrderCreationService
+from .services import (
+    InsufficientStockError,
+    OrderCreationService,
+    PaymentIntentService,
+)
 
 
 User = get_user_model()
@@ -413,6 +418,84 @@ class CheckoutSessionEndpointTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @override_settings(STRIPE_SECRET_KEY='sk_test_123')
+    @patch('checkout.services.stripe.PaymentIntent.create')
+    def test_post_checkout_session_payment_intent_creates_stripe_intent(
+        self,
+        create_payment_intent,
+    ):
+        cart = self._create_cart_with_item()
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            shipping_address=self._address_payload(),
+            status=CheckoutSession.Status.READY,
+            tenant=self.tenant,
+        )
+        create_payment_intent.return_value = {
+            'id': 'pi_test_123',
+            'client_secret': 'pi_test_123_secret_abc',
+            'amount': 99900,
+            'currency': 'usd',
+        }
+
+        response = self.client.post(
+            reverse(
+                'checkout-session-payment-intent',
+                args=[checkout_session.id],
+            ),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['payment_intent_id'], 'pi_test_123')
+        self.assertEqual(
+            response.data['client_secret'],
+            'pi_test_123_secret_abc',
+        )
+        self.assertEqual(response.data['amount'], 99900)
+        self.assertEqual(response.data['currency'], 'usd')
+        create_payment_intent.assert_called_once()
+        payment_intent_kwargs = create_payment_intent.call_args.kwargs
+        self.assertEqual(payment_intent_kwargs['amount'], 99900)
+        self.assertEqual(payment_intent_kwargs['currency'], 'usd')
+        self.assertEqual(
+            payment_intent_kwargs['idempotency_key'],
+            f'checkout-session-{checkout_session.id}',
+        )
+        self.assertEqual(
+            payment_intent_kwargs['metadata']['checkout_session_id'],
+            str(checkout_session.id),
+        )
+
+    def test_post_checkout_session_payment_intent_requires_ready_session(self):
+        cart = self._create_cart_with_item()
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            shipping_address=self._address_payload(),
+            status=CheckoutSession.Status.PENDING,
+            tenant=self.tenant,
+        )
+
+        response = self.client.post(
+            reverse(
+                'checkout-session-payment-intent',
+                args=[checkout_session.id],
+            ),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('ready', response.data['detail'])
+
+    def test_amount_to_cents_rounds_decimal_amount(self):
+        self.assertEqual(PaymentIntentService._amount_to_cents('19.995'), 2000)
 
     def _address_payload(self):
         return {
