@@ -38,10 +38,7 @@ class CheckoutSessionEndpointTests(APITestCase):
             reverse('checkout-session'),
             {
                 'idempotency_key': 'checkout-key-123',
-                'shipping_address': {
-                    'city': 'Prishtina',
-                    'line1': 'Main street 1',
-                },
+                'shipping_address': self._address_payload(),
             },
             format='json',
         )
@@ -54,6 +51,25 @@ class CheckoutSessionEndpointTests(APITestCase):
             response.data['shipping_address']['city'],
             'Prishtina',
         )
+
+    def test_post_checkout_session_validates_shipping_address_fields(self):
+        self._create_cart_with_item()
+
+        response = self.client.post(
+            reverse('checkout-session'),
+            {
+                'idempotency_key': 'checkout-key-123',
+                'shipping_address': {
+                    'city': 'Prishtina',
+                    'line1': 'Main street 1',
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('full_name', response.data['shipping_address'])
+        self.assertIn('postal_code', response.data['shipping_address'])
 
     def test_post_checkout_session_reuses_existing_idempotency_key(self):
         self._create_cart_with_item()
@@ -166,6 +182,28 @@ class CheckoutSessionEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('line1', response.data)
         self.assertIn('postal_code', response.data)
+
+    def test_patch_checkout_session_address_rejects_blank_required_fields(self):
+        cart = self._create_cart_with_item()
+        checkout_session = CheckoutSession.objects.create(
+            user=self.user,
+            cart=cart,
+            idempotency_key='checkout-key-123',
+            tenant=self.tenant,
+        )
+        payload = self._address_payload()
+        payload['full_name'] = ''
+        payload['line1'] = ''
+
+        response = self.client.patch(
+            reverse('checkout-session-address', args=[checkout_session.id]),
+            payload,
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('full_name', response.data)
+        self.assertIn('line1', response.data)
 
     def test_patch_checkout_session_address_rejects_other_customer_session(self):
         other_user = User.objects.create_user(
