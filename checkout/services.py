@@ -1,4 +1,8 @@
+from decimal import Decimal, ROUND_HALF_UP
+
+from django.conf import settings
 from django.db import transaction
+import stripe
 
 from cart.models import Cart, CartItem
 from orders.models import Order, OrderItem
@@ -8,6 +12,42 @@ from .models import CheckoutSession
 
 class InsufficientStockError(ValueError):
     pass
+
+
+class StripeConfigurationError(ValueError):
+    pass
+
+
+class PaymentIntentService:
+    @classmethod
+    def create_for_checkout(cls, checkout_session):
+        if not settings.STRIPE_SECRET_KEY:
+            raise StripeConfigurationError('Stripe secret key is not configured.')
+
+        cart = checkout_session.cart
+        amount = cls._amount_to_cents(cart.subtotal)
+        if amount < 1:
+            raise ValueError('Payment amount must be greater than zero.')
+
+        return stripe.PaymentIntent.create(
+            amount=amount,
+            currency='usd',
+            automatic_payment_methods={
+                'enabled': True,
+            },
+            metadata={
+                'checkout_session_id': str(checkout_session.id),
+                'cart_id': str(cart.id),
+                'user_id': str(checkout_session.user_id),
+                'tenant_id': str(checkout_session.tenant_id),
+            },
+            idempotency_key=f'checkout-session-{checkout_session.id}',
+        )
+
+    @staticmethod
+    def _amount_to_cents(amount):
+        cents = Decimal(amount) * Decimal('100')
+        return int(cents.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
 class OrderCreationService:

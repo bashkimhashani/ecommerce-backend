@@ -1,4 +1,5 @@
 from django.db import transaction
+import stripe
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,6 +13,7 @@ from .serializers import (
     CheckoutSessionCreateSerializer,
     CheckoutSessionSerializer,
 )
+from .services import PaymentIntentService, StripeConfigurationError
 
 
 class CheckoutSessionCreateView(APIView):
@@ -87,3 +89,75 @@ class CheckoutSessionAddressUpdateView(APIView):
 
         checkout_session.save(update_fields=update_fields)
         return Response(CheckoutSessionSerializer(checkout_session).data)
+
+
+class CheckoutSessionPaymentIntentView(APIView):
+    permission_classes = [IsCustomer]
+
+    def post(self, request, session_id):
+        checkout_session = CheckoutSession.objects.select_related(
+            'cart',
+            'user',
+        ).filter(
+            pk=session_id,
+            user=request.user,
+        ).first()
+        if checkout_session is None:
+            return Response(
+                {'detail': 'Checkout session not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if checkout_session.status != CheckoutSession.Status.READY:
+            return Response(
+                {'detail': 'Checkout session must be ready for payment.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not checkout_session.shipping_address:
+            return Response(
+                {'detail': 'Shipping address is required before payment.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not checkout_session.cart.items.exists():
+            return Response(
+                {'detail': 'Cannot create payment intent for an empty cart.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            payment_intent = PaymentIntentService.create_for_checkout(
+                checkout_session,
+            )
+        except StripeConfigurationError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except stripe.StripeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({
+            'payment_intent_id': payment_intent_value(payment_intent, 'id'),
+            'client_secret': payment_intent_value(
+                payment_intent,
+                'client_secret',
+            ),
+            'amount': payment_intent_value(payment_intent, 'amount'),
+            'currency': payment_intent_value(payment_intent, 'currency'),
+        })
+
+
+def payment_intent_value(value, key):
+    if isinstance(value, dict):
+        return value.get(key)
+    return getattr(value, key, None)
