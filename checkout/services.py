@@ -48,9 +48,7 @@ class OrderCreationService:
         )
 
         for cart_item in cart_items:
-            product_variant = type(
-                cart_item.product_variant,
-            ).objects.select_for_update().get(pk=cart_item.product_variant_id)
+            product_variant = cls._lock_product_variant(cart_item)
 
             if product_variant.stock_quantity < cart_item.quantity:
                 raise InsufficientStockError(
@@ -77,6 +75,12 @@ class OrderCreationService:
         cart.save(update_fields=['status', 'updated_at'])
         cart.items.all().delete()
         return order
+
+    @staticmethod
+    def _lock_product_variant(cart_item):
+        return type(
+            cart_item.product_variant,
+        ).objects.select_for_update().get(pk=cart_item.product_variant_id)
 
     @staticmethod
     def _product_name(cart_item):

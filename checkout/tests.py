@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -282,6 +285,30 @@ class CheckoutSessionEndpointTests(APITestCase):
         self.assertTrue(cart.items.exists())
         self.assertFalse(Order.objects.exists())
         self.assertFalse(OrderItem.objects.exists())
+
+    def test_lock_product_variant_uses_select_for_update(self):
+        product_variant_manager = Mock()
+        locked_product_variant = Mock()
+        product_variant_manager.select_for_update.return_value.get.return_value = (
+            locked_product_variant
+        )
+        product_variant_model = type(
+            'ProductVariantForLockTest',
+            (),
+            {'objects': product_variant_manager},
+        )
+        cart_item = SimpleNamespace(
+            product_variant=product_variant_model(),
+            product_variant_id=42,
+        )
+
+        result = OrderCreationService._lock_product_variant(cart_item)
+
+        product_variant_manager.select_for_update.assert_called_once_with()
+        product_variant_manager.select_for_update.return_value.get.assert_called_once_with(
+            pk=42,
+        )
+        self.assertEqual(result, locked_product_variant)
 
     def test_patch_checkout_session_address_rejects_blank_required_fields(self):
         cart = self._create_cart_with_item()
