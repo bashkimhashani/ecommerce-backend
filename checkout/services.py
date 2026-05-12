@@ -50,6 +50,32 @@ class PaymentIntentService:
         return int(cents.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
+class StripeWebhookService:
+    @classmethod
+    def handle_event(cls, event):
+        event_type = stripe_value(event, 'type')
+        if event_type != 'payment_intent.succeeded':
+            return None
+
+        payment_intent = stripe_value(stripe_value(event, 'data'), 'object')
+        return cls.handle_payment_intent_succeeded(payment_intent)
+
+    @classmethod
+    def handle_payment_intent_succeeded(cls, payment_intent):
+        metadata = stripe_value(payment_intent, 'metadata') or {}
+        checkout_session_id = stripe_value(metadata, 'checkout_session_id')
+        if not checkout_session_id:
+            raise ValueError('Missing checkout_session_id in payment metadata.')
+
+        checkout_session = CheckoutSession.objects.get(pk=checkout_session_id)
+        order = OrderCreationService.create_from_checkout(checkout_session)
+        if order.status == Order.Status.PENDING:
+            order.status = Order.Status.CONFIRMED
+            order.save(update_fields=['status', 'updated_at'])
+
+        return order
+
+
 class OrderCreationService:
     @classmethod
     @transaction.atomic
@@ -144,3 +170,9 @@ class OrderCreationService:
             getattr(product_variant, 'ram', ''),
         ]
         return ', '.join(option for option in variant_options if option)
+
+
+def stripe_value(value, key):
+    if isinstance(value, dict):
+        return value.get(key)
+    return getattr(value, key, None)
