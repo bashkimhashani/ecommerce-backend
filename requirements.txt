@@ -13,6 +13,7 @@ Django==6.0.4
 django-cors-headers==4.9.0
 django-environ==0.13.0
 django-filter==25.2
+django-fsm==3.0.1
 django-mptt==0.18.0
 django-redis==5.4.0
 djangorestframework==3.17.1
