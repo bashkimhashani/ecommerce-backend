@@ -310,6 +310,25 @@ class CheckoutSessionEndpointTests(APITestCase):
         )
         self.assertEqual(result, locked_product_variant)
 
+    def test_decrement_stock_reduces_stock_quantity(self):
+        product_variant = Mock(stock_quantity=5)
+
+        OrderCreationService._decrement_stock(product_variant, 2)
+
+        self.assertEqual(product_variant.stock_quantity, 3)
+        product_variant.save.assert_called_once_with(
+            update_fields=['stock_quantity'],
+        )
+
+    def test_decrement_stock_raises_insufficient_stock_on_underflow(self):
+        product_variant = Mock(stock_quantity=1)
+
+        with self.assertRaises(InsufficientStockError):
+            OrderCreationService._decrement_stock(product_variant, 2)
+
+        self.assertEqual(product_variant.stock_quantity, 1)
+        product_variant.save.assert_not_called()
+
     def test_patch_checkout_session_address_rejects_blank_required_fields(self):
         cart = self._create_cart_with_item()
         checkout_session = CheckoutSession.objects.create(

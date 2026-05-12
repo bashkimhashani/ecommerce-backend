@@ -49,14 +49,7 @@ class OrderCreationService:
 
         for cart_item in cart_items:
             product_variant = cls._lock_product_variant(cart_item)
-
-            if product_variant.stock_quantity < cart_item.quantity:
-                raise InsufficientStockError(
-                    'Requested quantity exceeds available stock.',
-                )
-
-            product_variant.stock_quantity -= cart_item.quantity
-            product_variant.save(update_fields=['stock_quantity'])
+            cls._decrement_stock(product_variant, cart_item.quantity)
             OrderItem.objects.create(
                 order=order,
                 product_variant=product_variant,
@@ -81,6 +74,17 @@ class OrderCreationService:
         return type(
             cart_item.product_variant,
         ).objects.select_for_update().get(pk=cart_item.product_variant_id)
+
+    @staticmethod
+    def _decrement_stock(product_variant, quantity):
+        next_stock_quantity = product_variant.stock_quantity - quantity
+        if next_stock_quantity < 0:
+            raise InsufficientStockError(
+                'Requested quantity exceeds available stock.',
+            )
+
+        product_variant.stock_quantity = next_stock_quantity
+        product_variant.save(update_fields=['stock_quantity'])
 
     @staticmethod
     def _product_name(cart_item):
