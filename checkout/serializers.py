@@ -3,6 +3,25 @@ from rest_framework import serializers
 from .models import CheckoutSession
 
 
+class AddressSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=255)
+    phone = serializers.CharField(max_length=30)
+    line1 = serializers.CharField(max_length=255)
+    line2 = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
+    city = serializers.CharField(max_length=100)
+    state = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+    )
+    postal_code = serializers.CharField(max_length=30)
+    country = serializers.CharField(max_length=100)
+
+
 class CheckoutSessionCreateSerializer(serializers.Serializer):
     idempotency_key = serializers.CharField(
         max_length=255,
