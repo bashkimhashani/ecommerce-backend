@@ -220,20 +220,39 @@ class CustomerOrderListEndpointTests(APITestCase):
         updated_order = Order.objects.get(pk=order.pk)
         self.assertEqual(updated_order.status, Order.Status.CANCELLED)
 
-    def test_customer_cancel_rejects_non_pending_order(self):
-        order = self._create_order(idempotency_key='customer-cancel-confirmed')
-        order.confirm()
-        order.save(update_fields=['status', 'updated_at'])
+    def test_customer_cancel_rejects_non_cancellable_states(self):
+        non_cancellable_statuses = [
+            Order.Status.CONFIRMED,
+            Order.Status.PROCESSING,
+            Order.Status.SHIPPED,
+            Order.Status.DELIVERED,
+            Order.Status.CANCELLED,
+        ]
         self.client.force_authenticate(user=self.customer)
 
-        response = self.client.post(
-            reverse('customer-order-cancel', args=[order.id]),
-            {},
-            format='json',
-        )
+        for order_status in non_cancellable_statuses:
+            with self.subTest(order_status=order_status):
+                order = self._create_order(
+                    idempotency_key=f'customer-cancel-{order_status}',
+                )
+                Order.objects.filter(pk=order.pk).update(status=order_status)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('cannot be cancelled', response.data['detail'])
+                response = self.client.post(
+                    reverse('customer-order-cancel', args=[order.id]),
+                    {},
+                    format='json',
+                )
+
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                )
+                self.assertIn(
+                    'cannot be cancelled',
+                    response.data['detail'],
+                )
+                order.refresh_from_db()
+                self.assertEqual(order.status, order_status)
 
     def test_customer_cancel_returns_not_found_for_other_customer_order(self):
         order = self._create_order(
