@@ -25,6 +25,26 @@ class CustomerOrderListView(APIView):
         return Response(OrderSerializer(orders, many=True).data)
 
 
+class CustomerOrderDetailView(APIView):
+    permission_classes = [IsCustomer]
+
+    def get(self, request, order_number):
+        order = Order.objects.filter(
+            order_number=order_number,
+            user=request.user,
+            tenant=request.user.tenant,
+        ).select_related(
+            'checkout_session',
+        ).first()
+        if order is None:
+            return Response(
+                {'detail': 'Order not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(OrderSerializer(order).data)
+
+
 class VendorOrderListView(APIView):
     permission_classes = [IsVendorAdmin]
 

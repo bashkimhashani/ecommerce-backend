@@ -170,6 +170,41 @@ class CustomerOrderListEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_customer_can_retrieve_own_order_by_order_number(self):
+        order = self._create_order(idempotency_key='customer-detail-key')
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.get(
+            reverse('customer-order-detail', args=[order.order_number]),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], order.id)
+        self.assertEqual(response.data['order_number'], order.order_number)
+
+    def test_customer_order_detail_returns_not_found_for_other_customer_order(self):
+        order = self._create_order(
+            user=self.other_customer,
+            idempotency_key='other-customer-detail-key',
+        )
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.get(
+            reverse('customer-order-detail', args=[order.order_number]),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_customer_order_detail_requires_customer_role(self):
+        order = self._create_order(idempotency_key='vendor-detail-key')
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.get(
+            reverse('customer-order-detail', args=[order.order_number]),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def _create_order(
         self,
         user=None,
