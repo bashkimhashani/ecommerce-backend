@@ -114,6 +114,102 @@ class OrderEventAuditTrailTests(TestCase):
         )
 
 
+class CustomerOrderListEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='customer-orders-store',
+            domain='customer-orders.example.com',
+            plan='basic',
+        )
+        self.customer = User.objects.create_user(
+            email='customer-list@example.com',
+            password='StrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+            tenant=self.tenant,
+        )
+        self.other_customer = User.objects.create_user(
+            email='other-customer-list@example.com',
+            password='StrongPass123',
+            first_name='Other',
+            last_name='Customer',
+            role='customer',
+            tenant=self.tenant,
+        )
+        self.vendor = User.objects.create_user(
+            email='vendor-list@example.com',
+            password='StrongPass123',
+            first_name='Vendor',
+            last_name='Admin',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+
+    def test_customer_can_list_own_orders(self):
+        first_order = self._create_order(idempotency_key='customer-list-1')
+        second_order = self._create_order(idempotency_key='customer-list-2')
+        other_order = self._create_order(
+            user=self.other_customer,
+            idempotency_key='other-customer-list',
+        )
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.get(reverse('customer-order-list'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order_ids = {order['id'] for order in response.data}
+        self.assertEqual(order_ids, {first_order.id, second_order.id})
+        self.assertNotIn(other_order.id, order_ids)
+
+    def test_customer_order_list_requires_customer_role(self):
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.get(reverse('customer-order-list'))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def _create_order(
+        self,
+        user=None,
+        idempotency_key='customer-list-key',
+    ):
+        user = user or self.customer
+        cart = Cart.objects.create(
+            user=user,
+            tenant=user.tenant,
+        )
+        checkout_session = CheckoutSession.objects.create(
+            user=user,
+            cart=cart,
+            idempotency_key=idempotency_key,
+            shipping_address={
+                'full_name': 'Customer User',
+                'line1': 'Main street 1',
+                'city': 'Prishtina',
+                'postal_code': '10000',
+                'country': 'Kosovo',
+            },
+            status=CheckoutSession.Status.READY,
+            tenant=user.tenant,
+        )
+        return Order.objects.create(
+            user=user,
+            checkout_session=checkout_session,
+            shipping_address={
+                'full_name': 'Customer User',
+                'line1': 'Main street 1',
+                'city': 'Prishtina',
+                'postal_code': '10000',
+                'country': 'Kosovo',
+            },
+            subtotal=Decimal('99.00'),
+            total_amount=Decimal('99.00'),
+            tenant=user.tenant,
+        )
+
+
 class VendorOrderConfirmEndpointTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(

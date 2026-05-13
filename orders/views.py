@@ -5,10 +5,24 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from users.permissions import IsVendorAdmin
+from users.permissions import IsCustomer, IsVendorAdmin
 
 from .models import Order
 from .serializers import OrderSerializer
+
+
+class CustomerOrderListView(APIView):
+    permission_classes = [IsCustomer]
+
+    def get(self, request):
+        orders = Order.objects.filter(
+            user=request.user,
+            tenant=request.user.tenant,
+        ).select_related(
+            'checkout_session',
+        )
+
+        return Response(OrderSerializer(orders, many=True).data)
 
 
 class VendorOrderListView(APIView):
