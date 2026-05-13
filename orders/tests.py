@@ -205,6 +205,63 @@ class CustomerOrderListEndpointTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_customer_can_cancel_pending_order(self):
+        order = self._create_order(idempotency_key='customer-cancel-key')
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            reverse('customer-order-cancel', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], Order.Status.CANCELLED)
+        updated_order = Order.objects.get(pk=order.pk)
+        self.assertEqual(updated_order.status, Order.Status.CANCELLED)
+
+    def test_customer_cancel_rejects_non_pending_order(self):
+        order = self._create_order(idempotency_key='customer-cancel-confirmed')
+        order.confirm()
+        order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            reverse('customer-order-cancel', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cannot be cancelled', response.data['detail'])
+
+    def test_customer_cancel_returns_not_found_for_other_customer_order(self):
+        order = self._create_order(
+            user=self.other_customer,
+            idempotency_key='other-customer-cancel-key',
+        )
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.post(
+            reverse('customer-order-cancel', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_customer_cancel_requires_customer_role(self):
+        order = self._create_order(idempotency_key='vendor-cancel-key')
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.post(
+            reverse('customer-order-cancel', args=[order.id]),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def _create_order(
         self,
         user=None,
