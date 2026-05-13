@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
 from django.urls import reverse
 from django_fsm import TransitionNotAllowed, can_proceed
 from rest_framework import status
@@ -136,6 +137,118 @@ class VendorOrderConfirmEndpointTests(APITestCase):
             role='customer',
             tenant=self.tenant,
         )
+
+    def test_vendor_can_list_orders(self):
+        first_order = self._create_order(idempotency_key='checkout-key-1')
+        second_order = self._create_order(idempotency_key='checkout-key-2')
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.get(reverse('vendor-order-list'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order_ids = {order['id'] for order in response.data}
+        self.assertEqual(order_ids, {first_order.id, second_order.id})
+
+    def test_vendor_order_list_filters_by_status(self):
+        pending_order = self._create_order(idempotency_key='pending-key')
+        confirmed_order = self._create_order(idempotency_key='confirmed-key')
+        confirmed_order.confirm()
+        confirmed_order.save(update_fields=['status', 'updated_at'])
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.get(
+            reverse('vendor-order-list'),
+            {'status': Order.Status.CONFIRMED},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [order['id'] for order in response.data],
+            [confirmed_order.id],
+        )
+        self.assertNotIn(
+            pending_order.id,
+            [order['id'] for order in response.data],
+        )
+
+    def test_vendor_order_list_filters_by_date_range(self):
+        today_order = self._create_order(idempotency_key='today-key')
+        old_order = self._create_order(idempotency_key='old-key')
+        old_created_at = timezone.now() - timezone.timedelta(days=5)
+        Order.objects.filter(pk=old_order.pk).update(created_at=old_created_at)
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.get(
+            reverse('vendor-order-list'),
+            {
+                'date_from': timezone.localdate().isoformat(),
+                'date_to': timezone.localdate().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [order['id'] for order in response.data],
+            [today_order.id],
+        )
+
+    def test_vendor_order_list_rejects_invalid_filters(self):
+        self.client.force_authenticate(user=self.vendor)
+
+        invalid_status_response = self.client.get(
+            reverse('vendor-order-list'),
+            {'status': 'lost'},
+        )
+        invalid_date_response = self.client.get(
+            reverse('vendor-order-list'),
+            {'date_from': 'not-a-date'},
+        )
+
+        self.assertEqual(
+            invalid_status_response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertEqual(
+            invalid_date_response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+    def test_vendor_order_list_requires_vendor_admin_role(self):
+        self.client.force_authenticate(user=self.customer)
+
+        response = self.client.get(reverse('vendor-order-list'))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_vendor_order_list_is_scoped_to_vendor_tenant(self):
+        own_order = self._create_order(idempotency_key='own-key')
+        other_tenant = Tenant.objects.create(
+            name='Other List Store',
+            slug='other-list-store',
+            domain='list.other.example.com',
+            plan='basic',
+        )
+        other_customer = User.objects.create_user(
+            email='list-other-customer@example.com',
+            password='StrongPass123',
+            first_name='Other',
+            last_name='Customer',
+            role='customer',
+            tenant=other_tenant,
+        )
+        other_order = self._create_order(
+            user=other_customer,
+            tenant=other_tenant,
+            idempotency_key='other-list-key',
+        )
+        self.client.force_authenticate(user=self.vendor)
+
+        response = self.client.get(reverse('vendor-order-list'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order_ids = {order['id'] for order in response.data}
+        self.assertEqual(order_ids, {own_order.id})
+        self.assertNotIn(other_order.id, order_ids)
 
     def test_vendor_can_confirm_pending_order(self):
         order = self._create_order()
