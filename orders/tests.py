@@ -138,6 +138,14 @@ class VendorOrderConfirmEndpointTests(APITestCase):
             role='customer',
             tenant=self.tenant,
         )
+        self.store_staff = User.objects.create_user(
+            email='staff@example.com',
+            password='StrongPass123',
+            first_name='Store',
+            last_name='Staff',
+            role='store_staff',
+            tenant=self.tenant,
+        )
 
     def test_vendor_can_list_orders(self):
         first_order = self._create_order(idempotency_key='checkout-key-1')
@@ -299,6 +307,28 @@ class VendorOrderConfirmEndpointTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_transition_endpoints_reject_store_staff_role(self):
+        order = self._create_order(idempotency_key='staff-role-key')
+        endpoint_names = [
+            'vendor-order-confirm',
+            'vendor-order-mark-shipped',
+            'vendor-order-mark-delivered',
+        ]
+        self.client.force_authenticate(user=self.store_staff)
+
+        for endpoint_name in endpoint_names:
+            with self.subTest(endpoint=endpoint_name):
+                response = self.client.post(
+                    reverse(endpoint_name, args=[order.id]),
+                    {},
+                    format='json',
+                )
+
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_403_FORBIDDEN,
+                )
 
     def test_vendor_confirm_returns_not_found_for_other_tenant_order(self):
         other_tenant = Tenant.objects.create(
