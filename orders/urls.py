@@ -2,12 +2,18 @@ from django.urls import path
 
 from .views import (
     VendorOrderConfirmView,
+    VendorOrderListView,
     VendorOrderMarkDeliveredView,
     VendorOrderMarkShippedView,
 )
 
 
 urlpatterns = [
+    path(
+        'vendor/orders/',
+        VendorOrderListView.as_view(),
+        name='vendor-order-list',
+    ),
     path(
         'vendor/orders/<int:order_id>/confirm/',
         VendorOrderConfirmView.as_view(),
