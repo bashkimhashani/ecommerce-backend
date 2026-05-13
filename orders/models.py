@@ -2,11 +2,13 @@ import uuid
 
 from django.conf import settings
 from django.dispatch import receiver
-from django.db import models
+from django.db import models, transaction
 from django_fsm import FSMField, transition
 from django_fsm.signals import post_transition
 
 from tenants.mixins import TenantModel
+
+from .tasks import send_order_status_email
 
 
 def generate_order_number():
@@ -163,4 +165,7 @@ def create_order_event(sender, instance, name, source, target, **kwargs):
         to_status=target,
         transition=name,
         tenant=instance.tenant,
+    )
+    transaction.on_commit(
+        lambda: send_order_status_email.delay(instance.pk, target),
     )

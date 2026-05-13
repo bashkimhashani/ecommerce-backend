@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
@@ -561,6 +562,16 @@ class VendorOrderConfirmEndpointTests(APITestCase):
         self.assertEqual(event.to_status, Order.Status.CONFIRMED)
         self.assertEqual(event.transition, 'confirm')
         self.assertEqual(event.tenant, self.tenant)
+
+    @patch('orders.models.send_order_status_email.delay')
+    def test_order_transition_queues_status_email_after_commit(self, delay):
+        order = self._create_order()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            order.confirm()
+            order.save(update_fields=['status', 'updated_at'])
+
+        delay.assert_called_once_with(order.pk, Order.Status.CONFIRMED)
 
     def test_invalid_transition_does_not_create_audit_event(self):
         order = self._create_order()
