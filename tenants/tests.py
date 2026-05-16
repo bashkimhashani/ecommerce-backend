@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
+from catalog.models import Brand, Category, Product
 from .cache import tenant_cache_key
 from .middleware import _thread_locals
 from .models import Tenant
@@ -56,6 +57,100 @@ class TenantCacheKeyTests(APITestCase):
         self.assertEqual(
             cache_key,
             'ecommerce:tenant:public:v1:catalog:products',
+        )
+
+
+class TenantDataIsolationTests(APITestCase):
+    def setUp(self):
+        self.tenant_a = Tenant.objects.create(
+            name='Tenant A',
+            slug='tenant-a',
+            domain='tenant-a.example.com',
+        )
+        self.tenant_b = Tenant.objects.create(
+            name='Tenant B',
+            slug='tenant-b',
+            domain='tenant-b.example.com',
+        )
+
+        self.brand_a = Brand.all_objects.create(
+            tenant=self.tenant_a,
+            name='Tenant A Brand',
+            slug='tenant-a-brand',
+        )
+        self.brand_b = Brand.all_objects.create(
+            tenant=self.tenant_b,
+            name='Tenant B Brand',
+            slug='tenant-b-brand',
+        )
+        self.category_a = Category.all_objects.create(
+            tenant=self.tenant_a,
+            name='Tenant A Laptops',
+            slug='tenant-a-laptops',
+        )
+        self.category_b = Category.all_objects.create(
+            tenant=self.tenant_b,
+            name='Tenant B Laptops',
+            slug='tenant-b-laptops',
+        )
+        self.product_a = Product.all_objects.create(
+            tenant=self.tenant_a,
+            name='Tenant A Laptop',
+            slug='shared-laptop',
+            sku='TENANT-A-LAPTOP',
+            brand=self.brand_a,
+            category=self.category_a,
+            status=Product.Status.ACTIVE,
+            base_price='999.00',
+        )
+        self.product_b = Product.all_objects.create(
+            tenant=self.tenant_b,
+            name='Tenant B Laptop',
+            slug='shared-laptop',
+            sku='TENANT-B-LAPTOP',
+            brand=self.brand_b,
+            category=self.category_b,
+            status=Product.Status.ACTIVE,
+            base_price='1299.00',
+        )
+
+    def tearDown(self):
+        if hasattr(_thread_locals, 'tenant'):
+            delattr(_thread_locals, 'tenant')
+
+    def test_tenant_a_product_queries_do_not_return_tenant_b_data(self):
+        _thread_locals.tenant = self.tenant_a
+
+        visible_products = list(Product.objects.order_by('id'))
+
+        self.assertEqual(visible_products, [self.product_a])
+        self.assertNotIn(self.product_b, visible_products)
+
+    def test_tenant_a_category_queries_do_not_return_tenant_b_data(self):
+        _thread_locals.tenant = self.tenant_a
+
+        visible_categories = list(Category.objects.order_by('id'))
+
+        self.assertEqual(visible_categories, [self.category_a])
+        self.assertNotIn(self.category_b, visible_categories)
+
+    def test_same_slug_lookup_is_scoped_to_current_tenant(self):
+        _thread_locals.tenant = self.tenant_a
+
+        product = Product.objects.get(slug='shared-laptop')
+
+        self.assertEqual(product, self.product_a)
+        self.assertNotEqual(product, self.product_b)
+
+    def test_tenant_b_data_exists_but_is_hidden_from_tenant_a_manager(self):
+        _thread_locals.tenant = self.tenant_a
+
+        self.assertEqual(
+            Product.all_objects.filter(slug='shared-laptop').count(),
+            2,
+        )
+        self.assertFalse(
+            Product.objects.filter(sku=self.product_b.sku).exists()
         )
 
 
