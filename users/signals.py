@@ -17,5 +17,9 @@ def assign_role_group_on_create(sender, instance, created, **kwargs):
     if not created or instance.role not in ROLE_GROUPS:
         return
 
-    group, _ = Group.objects.get_or_create(name=instance.role)
+    try:
+        group = Group.objects.get(name=instance.role)
+    except Group.DoesNotExist:
+        return
+
     instance.groups.add(group)
