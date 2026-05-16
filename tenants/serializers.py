@@ -77,7 +77,6 @@ class TenantRegistrationSerializer(serializers.Serializer):
             )
         return email
 
-    @transaction.atomic
     def create(self, validated_data):
         user_data = {
             'email': validated_data.pop('email'),
@@ -87,14 +86,15 @@ class TenantRegistrationSerializer(serializers.Serializer):
             'phone': validated_data.pop('phone', ''),
         }
 
-        tenant = Tenant.objects.create(**validated_data)
-        user = User.objects.create_user(
-            **user_data,
-            role='vendor_admin',
-            tenant=tenant,
-        )
-        tenant.owner = user
-        tenant.save(update_fields=['owner'])
+        with transaction.atomic():
+            tenant = Tenant.objects.create(**validated_data)
+            user = User.objects.create_user(
+                **user_data,
+                role='vendor_admin',
+                tenant=tenant,
+            )
+            tenant.owner = user
+            tenant.save(update_fields=['owner'])
 
         return {
             'tenant': tenant,

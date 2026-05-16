@@ -223,3 +223,18 @@ class TenantRegistrationTests(APITestCase):
                 self.client.post(self.url, self.payload, format='json')
 
         self.assertFalse(Tenant.objects.filter(slug='acme-store').exists())
+
+    def test_tenant_and_vendor_admin_roll_back_when_owner_assignment_fails(self):
+        original_save = Tenant.save
+
+        def fail_owner_assignment(instance, *args, **kwargs):
+            if kwargs.get('update_fields') == ['owner']:
+                raise Exception('Owner assignment failed')
+            return original_save(instance, *args, **kwargs)
+
+        with patch.object(Tenant, 'save', fail_owner_assignment):
+            with self.assertRaises(Exception):
+                self.client.post(self.url, self.payload, format='json')
+
+        self.assertFalse(Tenant.objects.filter(slug='acme-store').exists())
+        self.assertFalse(User.objects.filter(email='owner@acme.com').exists())
