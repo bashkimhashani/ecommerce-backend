@@ -1,11 +1,17 @@
+from io import BytesIO
+import shutil
+import tempfile
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.tokens import default_token_generator
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
@@ -326,6 +332,9 @@ class PasswordResetTests(APITestCase):
 
 class UserProfileTests(APITestCase):
     def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.media_root)
+        self.media_override.enable()
         self.tenant = Tenant.objects.create(
             name='Acme Store',
             slug='acme-store',
@@ -345,6 +354,22 @@ class UserProfileTests(APITestCase):
             last_name='User',
             role='customer',
             tenant=self.tenant,
+        )
+
+    def tearDown(self):
+        self.media_override.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+        super().tearDown()
+
+    def image_upload(self, name='avatar.jpg', size=(900, 700)):
+        image = Image.new('RGB', size, color='white')
+        output = BytesIO()
+        image.save(output, format='JPEG')
+        output.seek(0)
+        return SimpleUploadedFile(
+            name,
+            output.read(),
+            content_type='image/jpeg',
         )
 
     def test_user_can_patch_own_profile(self):
@@ -398,6 +423,55 @@ class UserProfileTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone, '+36307654321')
+
+    def test_user_can_upload_avatar_and_thumbnail_is_generated(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            reverse('user-me'),
+            {'avatar': self.image_upload()},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.avatar.name)
+        self.assertTrue(self.user.avatar_thumbnail.name)
+        self.assertTrue(self.user.avatar.storage.exists(
+            self.user.avatar.name,
+        ))
+        self.assertTrue(self.user.avatar_thumbnail.storage.exists(
+            self.user.avatar_thumbnail.name,
+        ))
+        self.assertIn('avatar', response.data)
+        self.assertIn('avatar_thumbnail', response.data)
+
+        self.user.avatar_thumbnail.open('rb')
+        thumbnail = Image.open(self.user.avatar_thumbnail)
+        thumbnail.load()
+        self.user.avatar_thumbnail.close()
+
+        self.assertLessEqual(thumbnail.width, 256)
+        self.assertLessEqual(thumbnail.height, 256)
+        self.assertEqual(thumbnail.format, 'JPEG')
+
+    def test_avatar_upload_rejects_non_image_file(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            reverse('user-me'),
+            {
+                'avatar': SimpleUploadedFile(
+                    'avatar.txt',
+                    b'not an image',
+                    content_type='text/plain',
+                ),
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('avatar', response.data)
 
     def test_profile_patch_requires_authentication(self):
         response = self.client.patch(
