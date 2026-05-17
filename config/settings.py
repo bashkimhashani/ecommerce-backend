@@ -17,6 +17,11 @@ env = environ.Env(
     STRIPE_SECRET_KEY=(str, ''),
     STRIPE_PUBLISHABLE_KEY=(str, ''),
     STRIPE_WEBHOOK_SECRET=(str, ''),
+    AWS_STORAGE_BUCKET_NAME=(str, ''),
+    AWS_S3_REGION_NAME=(str, ''),
+    AWS_ACCESS_KEY_ID=(str, ''),
+    AWS_SECRET_ACCESS_KEY=(str, ''),
+    AWS_S3_CUSTOM_DOMAIN=(str, ''),
 )
 environ.Env.read_env(BASE_DIR / '.env')
 
@@ -114,6 +119,42 @@ MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')
+AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME')
+AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
+AWS_S3_CUSTOM_DOMAIN = env('AWS_S3_CUSTOM_DOMAIN')
+AWS_S3_FILE_OVERWRITE = False
+AWS_DEFAULT_ACL = None
+AWS_QUERYSTRING_AUTH = False
+
+if AWS_STORAGE_BUCKET_NAME:
+    INSTALLED_APPS.append('storages')
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',
+    }
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+        },
+        'staticfiles': {
+            'BACKEND': (
+                'django.contrib.staticfiles.storage.StaticFilesStorage'
+            ),
+        },
+    }
+
+    if AWS_S3_CUSTOM_DOMAIN:
+        MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
+    else:
+        s3_domain = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+        if AWS_S3_REGION_NAME:
+            s3_domain = (
+                f'{AWS_STORAGE_BUCKET_NAME}.s3.'
+                f'{AWS_S3_REGION_NAME}.amazonaws.com'
+            )
+        MEDIA_URL = f'https://{s3_domain}/'
+
 CORS_ALLOWED_ORIGINS = env('CORS_ALLOWED_ORIGINS')
 
 REDIS_URL = env('REDIS_URL')
@@ -138,7 +179,7 @@ stripe.api_key = STRIPE_SECRET_KEY
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'users.authentication.RedisBlacklistJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',

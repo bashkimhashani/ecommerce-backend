@@ -9,9 +9,35 @@ from .models import Tenant
 
 User = get_user_model()
 
+DOMAIN_PATTERN = (
+    r'^(?=.{1,255}$)(?!-)'
+    r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+'
+    r'[a-z]{2,63}$'
+)
+
+
+def validate_unique_tenant_field(field_name, value, instance=None):
+    queryset = Tenant.objects.filter(**{field_name: value})
+    if instance and instance.pk:
+        queryset = queryset.exclude(pk=instance.pk)
+    if queryset.exists():
+        raise serializers.ValidationError(
+            f'A tenant with this {field_name} already exists.'
+        )
+    return value
+
+
+def validate_tenant_domain(value, instance=None):
+    domain = value.lower().strip()
+    if not re.fullmatch(DOMAIN_PATTERN, domain):
+        raise serializers.ValidationError('Enter a valid domain name.')
+    return validate_unique_tenant_field('domain', domain, instance)
+
 
 class TenantSerializer(serializers.ModelSerializer):
     owner = serializers.PrimaryKeyRelatedField(read_only=True)
+    slug = serializers.SlugField(max_length=50)
+    domain = serializers.CharField(max_length=255)
 
     class Meta:
         model = Tenant
@@ -26,6 +52,12 @@ class TenantSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+
+    def validate_slug(self, value):
+        return validate_unique_tenant_field('slug', value, self.instance)
+
+    def validate_domain(self, value):
+        return validate_tenant_domain(value, self.instance)
 
 
 class TenantRegistrationSerializer(serializers.Serializer):
@@ -48,26 +80,10 @@ class TenantRegistrationSerializer(serializers.Serializer):
     )
 
     def validate_slug(self, value):
-        if Tenant.objects.filter(slug=value).exists():
-            raise serializers.ValidationError(
-                'A tenant with this slug already exists.'
-            )
-        return value
+        return validate_unique_tenant_field('slug', value)
 
     def validate_domain(self, value):
-        domain = value.lower().strip()
-        domain_pattern = (
-            r'^(?=.{1,255}$)(?!-)'
-            r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+'
-            r'[a-z]{2,63}$'
-        )
-        if not re.fullmatch(domain_pattern, domain):
-            raise serializers.ValidationError('Enter a valid domain name.')
-        if Tenant.objects.filter(domain=domain).exists():
-            raise serializers.ValidationError(
-                'A tenant with this domain already exists.'
-            )
-        return domain
+        return validate_tenant_domain(value)
 
     def validate_email(self, value):
         email = User.objects.normalize_email(value)
@@ -77,7 +93,6 @@ class TenantRegistrationSerializer(serializers.Serializer):
             )
         return email
 
-    @transaction.atomic
     def create(self, validated_data):
         user_data = {
             'email': validated_data.pop('email'),
@@ -87,14 +102,15 @@ class TenantRegistrationSerializer(serializers.Serializer):
             'phone': validated_data.pop('phone', ''),
         }
 
-        tenant = Tenant.objects.create(**validated_data)
-        user = User.objects.create_user(
-            **user_data,
-            role='vendor_admin',
-            tenant=tenant,
-        )
-        tenant.owner = user
-        tenant.save(update_fields=['owner'])
+        with transaction.atomic():
+            tenant = Tenant.objects.create(**validated_data)
+            user = User.objects.create_user(
+                **user_data,
+                role='vendor_admin',
+                tenant=tenant,
+            )
+            tenant.owner = user
+            tenant.save(update_fields=['owner'])
 
         return {
             'tenant': tenant,
