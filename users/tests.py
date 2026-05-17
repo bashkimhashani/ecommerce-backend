@@ -17,6 +17,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from tenants.models import Tenant
+from users.tokens import make_email_verification_token
 
 
 User = get_user_model()
@@ -150,6 +151,78 @@ class JwtClaimsTests(APITestCase):
         self.assertIsNone(access_token['tenant_id'])
         self.assertEqual(refresh_token['role'], 'customer')
         self.assertIsNone(refresh_token['tenant_id'])
+
+
+class EmailVerificationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='verify@example.com',
+            password='StrongPass123',
+            first_name='Verify',
+            last_name='User',
+            role='customer',
+        )
+
+    def test_registration_queues_email_verification_task(self):
+        with patch('users.views.send_email_verification_email.delay') as delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(
+                    reverse('register'),
+                    {
+                        'email': 'new-customer@example.com',
+                        'first_name': 'New',
+                        'last_name': 'Customer',
+                        'password': 'StrongPass123',
+                    },
+                    format='json',
+                )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        delay.assert_called_once()
+        user_id, token = delay.call_args.args
+        registered_user = User.objects.get(email='new-customer@example.com')
+        self.assertEqual(user_id, registered_user.id)
+        self.assertFalse(registered_user.is_email_verified)
+        self.assertTrue(token)
+
+    def test_verify_email_marks_user_verified(self):
+        token = make_email_verification_token(self.user)
+
+        response = self.client.post(
+            reverse('verify-email', kwargs={'token': token}),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_email_verified)
+
+    def test_verify_email_is_idempotent_for_verified_user(self):
+        self.user.is_email_verified = True
+        self.user.save(update_fields=['is_email_verified'])
+        token = make_email_verification_token(self.user)
+
+        response = self.client.post(
+            reverse('verify-email', kwargs={'token': token}),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_email_verified)
+
+    def test_verify_email_rejects_invalid_token(self):
+        response = self.client.post(
+            reverse('verify-email', kwargs={'token': 'invalid-token'}),
+            {},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_email_verified)
 
 
 class PasswordResetTests(APITestCase):

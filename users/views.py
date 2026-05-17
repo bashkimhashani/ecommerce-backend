@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
+from django.core import signing
+from django.db import transaction
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -17,7 +19,11 @@ from .serializers import (
     UserProfileUpdateSerializer,
     UserSerializer,
 )
-from .tasks import send_password_reset_email
+from .tasks import send_email_verification_email, send_password_reset_email
+from .tokens import (
+    get_user_from_email_verification_token,
+    make_email_verification_token,
+)
 
 
 User = get_user_model()
@@ -34,6 +40,13 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            verification_token = make_email_verification_token(user)
+            transaction.on_commit(
+                lambda: send_email_verification_email.delay(
+                    user.id,
+                    verification_token,
+                )
+            )
             refresh = CustomTokenObtainPairSerializer.get_token(user)
             return Response({
                 'user': UserSerializer(user).data,
@@ -43,6 +56,33 @@ class RegisterView(APIView):
         return Response(
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, token):
+        try:
+            user = get_user_from_email_verification_token(token)
+        except signing.SignatureExpired:
+            return Response(
+                {'token': 'Email verification token has expired.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (signing.BadSignature, KeyError, User.DoesNotExist):
+            return Response(
+                {'token': 'Invalid email verification token.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not user.is_email_verified:
+            user.is_email_verified = True
+            user.save(update_fields=['is_email_verified'])
+
+        return Response(
+            {'message': 'Email address has been verified successfully.'},
+            status=status.HTTP_200_OK,
         )
 
 

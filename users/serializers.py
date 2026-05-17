@@ -63,9 +63,10 @@ class UserSerializer(serializers.ModelSerializer):
             'phone',
             'avatar',
             'avatar_thumbnail',
+            'is_email_verified',
             'date_joined'
         ]
-        read_only_fields = ['avatar_thumbnail']
+        read_only_fields = ['avatar_thumbnail', 'is_email_verified']
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
@@ -81,6 +82,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             'phone',
             'avatar',
             'avatar_thumbnail',
+            'is_email_verified',
             'date_joined'
         ]
         read_only_fields = [
@@ -89,6 +91,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             'role',
             'tenant',
             'avatar_thumbnail',
+            'is_email_verified',
             'date_joined'
         ]
 
