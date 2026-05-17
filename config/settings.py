@@ -94,6 +94,42 @@ MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
+AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='')
+AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
+AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
+AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default='')
+AWS_S3_FILE_OVERWRITE = False
+AWS_DEFAULT_ACL = None
+AWS_QUERYSTRING_AUTH = False
+
+if AWS_STORAGE_BUCKET_NAME:
+    INSTALLED_APPS.append('storages')
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',
+    }
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+        },
+        'staticfiles': {
+            'BACKEND': (
+                'django.contrib.staticfiles.storage.StaticFilesStorage'
+            ),
+        },
+    }
+
+    if AWS_S3_CUSTOM_DOMAIN:
+        MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
+    else:
+        s3_domain = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+        if AWS_S3_REGION_NAME:
+            s3_domain = (
+                f'{AWS_STORAGE_BUCKET_NAME}.s3.'
+                f'{AWS_S3_REGION_NAME}.amazonaws.com'
+            )
+        MEDIA_URL = f'https://{s3_domain}/'
+
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:5173').split(',')
 
 REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
