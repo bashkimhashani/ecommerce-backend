@@ -26,6 +26,11 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+    ADMIN_MODULE_GROUPS = {
+        'vendor_admin': {'catalog', 'inventory', 'vendor'},
+        'store_staff': {'catalog', 'inventory'},
+        'customer': set(),
+    }
 
     ROLE_CHOICES = [
         ('superadmin', 'Super Admin'),
@@ -65,3 +70,16 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def get_full_name(self):
         return f'{self.first_name} {self.last_name}'
+
+    def has_module_perms(self, app_label):
+        if not self.is_active:
+            return False
+        if self.is_superuser:
+            return True
+
+        allowed_modules = set()
+        for group_name in self.groups.values_list('name', flat=True):
+            allowed_modules.update(
+                self.ADMIN_MODULE_GROUPS.get(group_name, set())
+            )
+        return app_label in allowed_modules

@@ -101,6 +101,72 @@ class RoleGroupAssignmentTests(APITestCase):
         )
 
 
+class AdminModulePermissionTests(APITestCase):
+    def create_staff_user(self, role):
+        return User.objects.create_user(
+            email=f'{role}-admin@example.com',
+            password='StrongPass123',
+            first_name='Admin',
+            last_name='User',
+            role=role,
+            is_staff=True,
+        )
+
+    def test_vendor_admin_group_can_access_vendor_operational_admin_modules(self):
+        user = self.create_staff_user('vendor_admin')
+
+        allowed_modules = ['catalog', 'inventory', 'vendor']
+        blocked_modules = ['users', 'tenants', 'auth']
+
+        for app_label in allowed_modules:
+            with self.subTest(app_label=app_label):
+                self.assertTrue(user.has_module_perms(app_label))
+
+        for app_label in blocked_modules:
+            with self.subTest(app_label=app_label):
+                self.assertFalse(user.has_module_perms(app_label))
+
+    def test_store_staff_group_can_access_store_operational_admin_modules(self):
+        user = self.create_staff_user('store_staff')
+
+        allowed_modules = ['catalog', 'inventory']
+        blocked_modules = ['vendor', 'users', 'tenants', 'auth']
+
+        for app_label in allowed_modules:
+            with self.subTest(app_label=app_label):
+                self.assertTrue(user.has_module_perms(app_label))
+
+        for app_label in blocked_modules:
+            with self.subTest(app_label=app_label):
+                self.assertFalse(user.has_module_perms(app_label))
+
+    def test_customer_group_cannot_access_admin_modules(self):
+        user = self.create_staff_user('customer')
+
+        for app_label in ['catalog', 'inventory', 'vendor', 'users', 'tenants']:
+            with self.subTest(app_label=app_label):
+                self.assertFalse(user.has_module_perms(app_label))
+
+    def test_superadmin_can_access_all_admin_modules(self):
+        user = User.objects.create_superuser(
+            email='superadmin-admin@example.com',
+            password='StrongPass123',
+            first_name='Super',
+            last_name='Admin',
+        )
+
+        for app_label in ['catalog', 'inventory', 'vendor', 'users', 'tenants']:
+            with self.subTest(app_label=app_label):
+                self.assertTrue(user.has_module_perms(app_label))
+
+    def test_inactive_user_cannot_access_admin_modules(self):
+        user = self.create_staff_user('vendor_admin')
+        user.is_active = False
+        user.save(update_fields=['is_active'])
+
+        self.assertFalse(user.has_module_perms('catalog'))
+
+
 class JwtClaimsTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
