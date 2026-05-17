@@ -1,12 +1,33 @@
 from pathlib import Path
-from decouple import config
 from datetime import timedelta
+
+import environ
+import stripe
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY')
-DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost').split(',')
+env = environ.Env(
+    DEBUG=(bool, False),
+    ALLOWED_HOSTS=(list, ['localhost']),
+    CORS_ALLOWED_ORIGINS=(list, ['http://localhost:5173']),
+    DB_HOST=(str, 'db'),
+    DB_PORT=(str, '5432'),
+    REDIS_URL=(str, 'redis://redis:6379/0'),
+    CACHE_KEY_PREFIX=(str, 'ecommerce'),
+    STRIPE_SECRET_KEY=(str, ''),
+    STRIPE_PUBLISHABLE_KEY=(str, ''),
+    STRIPE_WEBHOOK_SECRET=(str, ''),
+    AWS_STORAGE_BUCKET_NAME=(str, ''),
+    AWS_S3_REGION_NAME=(str, ''),
+    AWS_ACCESS_KEY_ID=(str, ''),
+    AWS_SECRET_ACCESS_KEY=(str, ''),
+    AWS_S3_CUSTOM_DOMAIN=(str, ''),
+)
+environ.Env.read_env(BASE_DIR / '.env')
+
+SECRET_KEY = env('SECRET_KEY')
+DEBUG = env('DEBUG')
+ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -23,11 +44,15 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'drf_spectacular',
+    'django_fsm',
     'ai',
+    'cart',
     'catalog',
     'notifications',
     'tenants',
     'users',
+    'checkout',
+    'orders',
     'inventory',
     'vendor',
 ]
@@ -69,11 +94,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('POSTGRES_DB'),
-        'USER': config('POSTGRES_USER'),
-        'PASSWORD': config('POSTGRES_PASSWORD'),
-        'HOST': config('DB_HOST', default='db'),
-        'PORT': config('DB_PORT', default='5432'),
+        'NAME': env('POSTGRES_DB'),
+        'USER': env('POSTGRES_USER'),
+        'PASSWORD': env('POSTGRES_PASSWORD'),
+        'HOST': env('DB_HOST'),
+        'PORT': env('DB_PORT'),
     }
 }
 
@@ -94,11 +119,11 @@ MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
-AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='')
-AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
-AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
-AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default='')
+AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')
+AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME')
+AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
+AWS_S3_CUSTOM_DOMAIN = env('AWS_S3_CUSTOM_DOMAIN')
 AWS_S3_FILE_OVERWRITE = False
 AWS_DEFAULT_ACL = None
 AWS_QUERYSTRING_AUTH = False
@@ -130,10 +155,10 @@ if AWS_STORAGE_BUCKET_NAME:
             )
         MEDIA_URL = f'https://{s3_domain}/'
 
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:5173').split(',')
+CORS_ALLOWED_ORIGINS = env('CORS_ALLOWED_ORIGINS')
 
-REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
-CACHE_KEY_PREFIX = config('CACHE_KEY_PREFIX', default='ecommerce')
+REDIS_URL = env('REDIS_URL')
+CACHE_KEY_PREFIX = env('CACHE_KEY_PREFIX')
 
 CACHES = {
     'default': {
@@ -146,6 +171,11 @@ CACHES = {
         },
     },
 }
+
+STRIPE_SECRET_KEY = env('STRIPE_SECRET_KEY')
+STRIPE_PUBLISHABLE_KEY = env('STRIPE_PUBLISHABLE_KEY')
+STRIPE_WEBHOOK_SECRET = env('STRIPE_WEBHOOK_SECRET')
+stripe.api_key = STRIPE_SECRET_KEY
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
