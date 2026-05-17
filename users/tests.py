@@ -3,10 +3,12 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.tokens import default_token_generator
-from django.urls import reverse
+from django.test import SimpleTestCase
+from django.urls import resolve, reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
@@ -14,6 +16,36 @@ from tenants.models import Tenant
 
 
 User = get_user_model()
+
+
+class AuthEndpointPermissionTests(SimpleTestCase):
+    def assert_permission_classes(self, url_name, expected):
+        view_class = resolve(reverse(url_name)).func.view_class
+        self.assertEqual(view_class.permission_classes, expected)
+
+    def test_public_auth_endpoints_have_explicit_permissions(self):
+        public_endpoints = [
+            'register',
+            'login',
+            'token_refresh',
+            'password-reset',
+            'password-reset-confirm',
+        ]
+
+        for url_name in public_endpoints:
+            with self.subTest(url_name=url_name):
+                self.assert_permission_classes(url_name, [AllowAny])
+
+    def test_authenticated_auth_endpoints_have_explicit_permissions(self):
+        protected_endpoints = [
+            'logout',
+            'me',
+            'user-me',
+        ]
+
+        for url_name in protected_endpoints:
+            with self.subTest(url_name=url_name):
+                self.assert_permission_classes(url_name, [IsAuthenticated])
 
 
 class RoleGroupMigrationTests(APITestCase):
