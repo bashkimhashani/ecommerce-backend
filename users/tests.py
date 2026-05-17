@@ -13,6 +13,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from tenants.models import Tenant
+from .token_blacklist import get_token_blacklist_key
 
 
 User = get_user_model()
@@ -242,6 +243,79 @@ class JwtClaimsTests(APITestCase):
         self.assertIsNone(access_token['tenant_id'])
         self.assertEqual(refresh_token['role'], 'customer')
         self.assertIsNone(refresh_token['tenant_id'])
+
+
+class FakeRedisConnection:
+    def __init__(self):
+        self.setex_calls = []
+        self.existing_keys = set()
+
+    def setex(self, key, ttl, value):
+        self.setex_calls.append((key, ttl, value))
+        self.existing_keys.add(key)
+
+    def exists(self, key):
+        return key in self.existing_keys
+
+
+class LogoutRedisBlacklistTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='customer@example.com',
+            password='StrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+        )
+
+    def test_logout_stores_refresh_and_access_tokens_in_redis_with_ttl(self):
+        redis_connection = FakeRedisConnection()
+        refresh = RefreshToken.for_user(self.user)
+        access = refresh.access_token
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {str(access)}',
+        )
+
+        with patch(
+            'users.token_blacklist.get_redis_connection',
+            return_value=redis_connection,
+        ):
+            response = self.client.post(
+                reverse('logout'),
+                {'refresh': str(refresh)},
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        blacklist_keys = {call[0] for call in redis_connection.setex_calls}
+        self.assertEqual(
+            blacklist_keys,
+            {
+                get_token_blacklist_key(refresh['jti']),
+                get_token_blacklist_key(access['jti']),
+            },
+        )
+        for _, ttl, value in redis_connection.setex_calls:
+            self.assertGreater(ttl, 0)
+            self.assertEqual(value, '1')
+
+    def test_redis_blacklisted_access_token_is_rejected(self):
+        redis_connection = FakeRedisConnection()
+        access = RefreshToken.for_user(self.user).access_token
+        redis_connection.existing_keys.add(get_token_blacklist_key(access['jti']))
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {str(access)}',
+        )
+
+        with patch(
+            'users.token_blacklist.get_redis_connection',
+            return_value=redis_connection,
+        ):
+            response = self.client.get(reverse('me'))
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class PasswordResetTests(APITestCase):

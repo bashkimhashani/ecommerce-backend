@@ -10,6 +10,7 @@ from catalog.models import Brand, Category, Product
 from .cache import tenant_cache_key
 from .middleware import _thread_locals
 from .models import Tenant
+from .serializers import TenantSerializer
 
 
 User = get_user_model()
@@ -152,6 +153,71 @@ class TenantDataIsolationTests(APITestCase):
         self.assertFalse(
             Product.objects.filter(sku=self.product_b.sku).exists()
         )
+
+
+class TenantSerializerValidationTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Acme Store',
+            slug='acme-store',
+            domain='acme.example.com',
+            plan='basic',
+        )
+
+    def test_duplicate_slug_is_rejected(self):
+        serializer = TenantSerializer(
+            data={
+                'name': 'Duplicate Slug Store',
+                'slug': 'acme-store',
+                'domain': 'duplicate.example.com',
+                'plan': 'free',
+            },
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('slug', serializer.errors)
+
+    def test_invalid_domain_format_is_rejected(self):
+        serializer = TenantSerializer(
+            data={
+                'name': 'Invalid Domain Store',
+                'slug': 'invalid-domain-store',
+                'domain': 'not a domain',
+                'plan': 'free',
+            },
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('domain', serializer.errors)
+
+    def test_domain_is_normalized_before_save(self):
+        serializer = TenantSerializer(
+            data={
+                'name': 'Beta Store',
+                'slug': 'beta-store',
+                'domain': '  BETA.EXAMPLE.COM  ',
+                'plan': 'premium',
+            },
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        tenant = serializer.save()
+
+        self.assertEqual(tenant.domain, 'beta.example.com')
+
+    def test_existing_tenant_can_keep_own_slug_and_domain_on_update(self):
+        serializer = TenantSerializer(
+            self.tenant,
+            data={
+                'name': 'Acme Store Updated',
+                'slug': 'acme-store',
+                'domain': 'acme.example.com',
+                'plan': 'premium',
+                'is_active': True,
+            },
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
 class TenantRegistrationTests(APITestCase):
