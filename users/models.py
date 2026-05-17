@@ -1,3 +1,6 @@
+from pathlib import Path
+from uuid import uuid4
+
 from django.db import models
 from django.contrib.auth.models import (
     AbstractBaseUser,
@@ -5,6 +8,16 @@ from django.contrib.auth.models import (
     PermissionsMixin
 )
 from tenants.models import Tenant
+
+
+def user_avatar_upload_path(instance, filename):
+    suffix = Path(filename).suffix.lower() or '.jpg'
+    return f'users/{instance.pk}/avatars/{uuid4().hex}{suffix}'
+
+
+def user_avatar_thumbnail_upload_path(instance, filename):
+    suffix = Path(filename).suffix.lower() or '.jpg'
+    return f'users/{instance.pk}/avatars/thumbnails/{uuid4().hex}{suffix}'
 
 
 class UserManager(BaseUserManager):
@@ -55,6 +68,17 @@ class User(AbstractBaseUser, PermissionsMixin):
         related_name='users'
     )
     phone = models.CharField(max_length=20, null=True, blank=True)
+    avatar = models.ImageField(
+        upload_to=user_avatar_upload_path,
+        null=True,
+        blank=True,
+    )
+    avatar_thumbnail = models.ImageField(
+        upload_to=user_avatar_thumbnail_upload_path,
+        null=True,
+        blank=True,
+        editable=False,
+    )
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)

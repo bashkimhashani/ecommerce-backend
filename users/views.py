@@ -1,4 +1,5 @@
 from rest_framework import status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -128,9 +129,13 @@ class PasswordResetConfirmView(APIView):
 
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get(self, request):
-        serializer = UserSerializer(request.user)
+        serializer = UserSerializer(
+            request.user,
+            context={'request': request},
+        )
         return Response(serializer.data)
 
     def patch(self, request):
@@ -138,6 +143,7 @@ class MeView(APIView):
             request.user,
             data=request.data,
             partial=True,
+            context={'request': request},
         )
         if serializer.is_valid():
             serializer.save()
