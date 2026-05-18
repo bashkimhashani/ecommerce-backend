@@ -165,7 +165,7 @@ class VendorOrderSummaryView(APIView):
             404: OpenApiResponse(description='Vendor profile not found.'),
         },
     )
-    
+
     def get(self, request):
         try:
             vendor = get_vendor_for_request(request)
@@ -174,21 +174,21 @@ class VendorOrderSummaryView(APIView):
                 {'error': 'Vendor profile not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # Check cache first (5 minutes TTL)
         cache_key = f'vendor_order_summary_{vendor.id}'
         cached_data = cache.get(cache_key)
-        
+
         if cached_data is not None:
             return Response(cached_data)
 
         result = vendor_order_summary_rows(vendor)
         cache.set(cache_key, result, 300)
-        
+
         serializer = OrderSummarySerializer(result, many=True)
         return Response(serializer.data)
-    
-# ENDPOINTI 2 - CSV EXPORT 
+
+# ENDPOINTI 2 - CSV EXPORT
 class VendorOrdersExportView(APIView):
     """
     GET /api/v1/vendor/orders/export/?format=csv
@@ -204,16 +204,16 @@ class VendorOrdersExportView(APIView):
             404: OpenApiResponse(description='Vendor profile not found.'),
         },
     )
-    
+
     def get(self, request):
         format_param = request.query_params.get('format', 'csv')
-        
+
         if format_param != 'csv':
             return Response(
                 {'error': 'Only CSV format is supported'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
             vendor = get_vendor_for_request(request)
         except VendorProfile.DoesNotExist:
@@ -221,14 +221,14 @@ class VendorOrdersExportView(APIView):
                 {'error': 'Vendor profile not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
+
         from .tasks import export_vendor_orders_csv
-        
+
         task = export_vendor_orders_csv.delay(vendor.id, request.user.id)
-        
+
         cache_key = f'vendor_export_task_{request.user.id}'
         cache.set(cache_key, task.id, 3600)
-        
+
         return Response({
             'task_id': task.id,
             'status': 'queued',
@@ -236,35 +236,35 @@ class VendorOrdersExportView(APIView):
             'poll_url': f'/api/v1/vendor/export/status/?task_id={task.id}'
         }, status=status.HTTP_202_ACCEPTED)
 
-# ENDPOINTI 3 - CHECK EXPORT STATUS 
+# ENDPOINTI 3 - CHECK EXPORT STATUS
 class ExportStatusView(APIView):
     """
     GET /api/v1/vendor/export/status/?task_id=<task_id>
     Poll for export task status
     """
     permission_classes = [IsVendorAdmin]
-    
+
     def get(self, request):
         task_id = request.query_params.get('task_id')
-        
+
         if not task_id:
             return Response(
                 {'error': 'task_id parameter is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         from celery.result import AsyncResult
         task = AsyncResult(task_id)
-        
+
         response_data = {
             'task_id': task_id,
             'status': task.state,
         }
-        
+
         if task.state == 'SUCCESS':
             response_data['result'] = task.result
             response_data['download_url'] = task.result.get('download_url')
         elif task.state == 'FAILURE':
             response_data['error'] = str(task.info)
-        
+
         return Response(response_data)
