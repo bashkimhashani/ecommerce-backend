@@ -251,8 +251,11 @@ class CustomerOrderListEndpointTests(APITestCase):
                     'cannot be cancelled',
                     response.data['detail'],
                 )
-                order.refresh_from_db()
-                self.assertEqual(order.status, order_status)
+                current_status = Order.objects.values_list(
+                    'status',
+                    flat=True,
+                ).get(pk=order.pk)
+                self.assertEqual(current_status, order_status)
 
     def test_customer_cancel_returns_not_found_for_other_customer_order(self):
         order = self._create_order(
@@ -290,6 +293,7 @@ class CustomerOrderListEndpointTests(APITestCase):
         cart = Cart.objects.create(
             user=user,
             tenant=user.tenant,
+            status=Cart.Status.CHECKED_OUT,
         )
         checkout_session = CheckoutSession.objects.create(
             user=user,
