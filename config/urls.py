@@ -10,6 +10,7 @@ from checkout.views import StripeWebhookView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/auth/', include('users.urls')),
+    path('api/v1/catalog/', include('catalog.urls')),
     path('api/v1/users/', include('users.profile_urls')),
     path('api/v1/tenants/', include('tenants.urls')),
     path('api/v1/cart/', include('cart.urls')),
@@ -20,6 +21,7 @@ urlpatterns = [
         StripeWebhookView.as_view(),
         name='stripe-webhook',
     ),
+    path('api/v1/vendor/', include('vendor.urls')),
 
     # Swagger
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

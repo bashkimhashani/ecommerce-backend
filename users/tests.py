@@ -1,19 +1,58 @@
+from io import BytesIO
+import shutil
+import tempfile
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.tokens import default_token_generator
-from django.urls import reverse
+from django.test import SimpleTestCase
+from django.urls import resolve, reverse
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from PIL import Image
 from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from tenants.models import Tenant
+from .token_blacklist import get_token_blacklist_key
 
 
 User = get_user_model()
+
+
+class AuthEndpointPermissionTests(SimpleTestCase):
+    def assert_permission_classes(self, url_name, expected):
+        view_class = resolve(reverse(url_name)).func.view_class
+        self.assertEqual(view_class.permission_classes, expected)
+
+    def test_public_auth_endpoints_have_explicit_permissions(self):
+        public_endpoints = [
+            'register',
+            'login',
+            'token_refresh',
+            'password-reset',
+            'password-reset-confirm',
+        ]
+
+        for url_name in public_endpoints:
+            with self.subTest(url_name=url_name):
+                self.assert_permission_classes(url_name, [AllowAny])
+
+    def test_authenticated_auth_endpoints_have_explicit_permissions(self):
+        protected_endpoints = [
+            'logout',
+            'me',
+            'user-me',
+        ]
+
+        for url_name in protected_endpoints:
+            with self.subTest(url_name=url_name):
+                self.assert_permission_classes(url_name, [IsAuthenticated])
 
 
 class RoleGroupMigrationTests(APITestCase):
@@ -67,6 +106,72 @@ class RoleGroupAssignmentTests(APITestCase):
                 name__in=['vendor_admin', 'store_staff', 'customer']
             ).exists()
         )
+
+
+class AdminModulePermissionTests(APITestCase):
+    def create_staff_user(self, role):
+        return User.objects.create_user(
+            email=f'{role}-admin@example.com',
+            password='StrongPass123',
+            first_name='Admin',
+            last_name='User',
+            role=role,
+            is_staff=True,
+        )
+
+    def test_vendor_admin_group_can_access_vendor_operational_admin_modules(self):
+        user = self.create_staff_user('vendor_admin')
+
+        allowed_modules = ['catalog', 'inventory', 'vendor']
+        blocked_modules = ['users', 'tenants', 'auth']
+
+        for app_label in allowed_modules:
+            with self.subTest(app_label=app_label):
+                self.assertTrue(user.has_module_perms(app_label))
+
+        for app_label in blocked_modules:
+            with self.subTest(app_label=app_label):
+                self.assertFalse(user.has_module_perms(app_label))
+
+    def test_store_staff_group_can_access_store_operational_admin_modules(self):
+        user = self.create_staff_user('store_staff')
+
+        allowed_modules = ['catalog', 'inventory']
+        blocked_modules = ['vendor', 'users', 'tenants', 'auth']
+
+        for app_label in allowed_modules:
+            with self.subTest(app_label=app_label):
+                self.assertTrue(user.has_module_perms(app_label))
+
+        for app_label in blocked_modules:
+            with self.subTest(app_label=app_label):
+                self.assertFalse(user.has_module_perms(app_label))
+
+    def test_customer_group_cannot_access_admin_modules(self):
+        user = self.create_staff_user('customer')
+
+        for app_label in ['catalog', 'inventory', 'vendor', 'users', 'tenants']:
+            with self.subTest(app_label=app_label):
+                self.assertFalse(user.has_module_perms(app_label))
+
+    def test_superadmin_can_access_all_admin_modules(self):
+        user = User.objects.create_superuser(
+            email='superadmin-admin@example.com',
+            password='StrongPass123',
+            first_name='Super',
+            last_name='Admin',
+        )
+
+        for app_label in ['catalog', 'inventory', 'vendor', 'users', 'tenants']:
+            with self.subTest(app_label=app_label):
+                self.assertTrue(user.has_module_perms(app_label))
+
+    def test_inactive_user_cannot_access_admin_modules(self):
+        user = self.create_staff_user('vendor_admin')
+        user.is_active = False
+        user.save(update_fields=['is_active'])
+
+        self.assertFalse(user.has_module_perms('catalog'))
 
 
 class JwtClaimsTests(APITestCase):
@@ -183,6 +288,79 @@ class JwtClaimsTests(APITestCase):
         self.assertIsNone(refresh_token['tenant_id'])
 
 
+class FakeRedisConnection:
+    def __init__(self):
+        self.setex_calls = []
+        self.existing_keys = set()
+
+    def setex(self, key, ttl, value):
+        self.setex_calls.append((key, ttl, value))
+        self.existing_keys.add(key)
+
+    def exists(self, key):
+        return key in self.existing_keys
+
+
+class LogoutRedisBlacklistTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='customer@example.com',
+            password='StrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+        )
+
+    def test_logout_stores_refresh_and_access_tokens_in_redis_with_ttl(self):
+        redis_connection = FakeRedisConnection()
+        refresh = RefreshToken.for_user(self.user)
+        access = refresh.access_token
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {str(access)}',
+        )
+
+        with patch(
+            'users.token_blacklist.get_redis_connection',
+            return_value=redis_connection,
+        ):
+            response = self.client.post(
+                reverse('logout'),
+                {'refresh': str(refresh)},
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        blacklist_keys = {call[0] for call in redis_connection.setex_calls}
+        self.assertEqual(
+            blacklist_keys,
+            {
+                get_token_blacklist_key(refresh['jti']),
+                get_token_blacklist_key(access['jti']),
+            },
+        )
+        for _, ttl, value in redis_connection.setex_calls:
+            self.assertGreater(ttl, 0)
+            self.assertEqual(value, '1')
+
+    def test_redis_blacklisted_access_token_is_rejected(self):
+        redis_connection = FakeRedisConnection()
+        access = RefreshToken.for_user(self.user).access_token
+        redis_connection.existing_keys.add(get_token_blacklist_key(access['jti']))
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {str(access)}',
+        )
+
+        with patch(
+            'users.token_blacklist.get_redis_connection',
+            return_value=redis_connection,
+        ):
+            response = self.client.get(reverse('me'))
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
 class PasswordResetTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -289,6 +467,9 @@ class PasswordResetTests(APITestCase):
 
 class UserProfileTests(APITestCase):
     def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.media_root)
+        self.media_override.enable()
         self.tenant = Tenant.objects.create(
             name='Acme Store',
             slug='acme-store',
@@ -308,6 +489,22 @@ class UserProfileTests(APITestCase):
             last_name='User',
             role='customer',
             tenant=self.tenant,
+        )
+
+    def tearDown(self):
+        self.media_override.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+        super().tearDown()
+
+    def image_upload(self, name='avatar.jpg', size=(900, 700)):
+        image = Image.new('RGB', size, color='white')
+        output = BytesIO()
+        image.save(output, format='JPEG')
+        output.seek(0)
+        return SimpleUploadedFile(
+            name,
+            output.read(),
+            content_type='image/jpeg',
         )
 
     def test_user_can_patch_own_profile(self):
@@ -361,6 +558,55 @@ class UserProfileTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone, '+36307654321')
+
+    def test_user_can_upload_avatar_and_thumbnail_is_generated(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            reverse('user-me'),
+            {'avatar': self.image_upload()},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.avatar.name)
+        self.assertTrue(self.user.avatar_thumbnail.name)
+        self.assertTrue(self.user.avatar.storage.exists(
+            self.user.avatar.name,
+        ))
+        self.assertTrue(self.user.avatar_thumbnail.storage.exists(
+            self.user.avatar_thumbnail.name,
+        ))
+        self.assertIn('avatar', response.data)
+        self.assertIn('avatar_thumbnail', response.data)
+
+        self.user.avatar_thumbnail.open('rb')
+        thumbnail = Image.open(self.user.avatar_thumbnail)
+        thumbnail.load()
+        self.user.avatar_thumbnail.close()
+
+        self.assertLessEqual(thumbnail.width, 256)
+        self.assertLessEqual(thumbnail.height, 256)
+        self.assertEqual(thumbnail.format, 'JPEG')
+
+    def test_avatar_upload_rejects_non_image_file(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            reverse('user-me'),
+            {
+                'avatar': SimpleUploadedFile(
+                    'avatar.txt',
+                    b'not an image',
+                    content_type='text/plain',
+                ),
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('avatar', response.data)
 
     def test_profile_patch_requires_authentication(self):
         response = self.client.patch(
