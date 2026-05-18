@@ -91,7 +91,7 @@ def get_order_customer_name(order):
     first_name = getattr(order, 'first_name', '')
     last_name = getattr(order, 'last_name', '')
 
-   
+
     first_name = str(first_name) if first_name else ""
     last_name = str(last_name) if last_name else ""
 
@@ -112,10 +112,10 @@ def get_order_item_product_name(item):
         if getattr(item.product_variant, 'product', None):
             return str(getattr(item.product_variant.product, 'name', ''))
 
-        
+
         return str(getattr(item.product_variant, 'name', ''))
 
-    
+
     if getattr(item, 'variant', None):
         if getattr(item.variant, 'product', None):
             return str(getattr(item.variant.product, 'name', ''))
@@ -138,7 +138,7 @@ def get_order_item_unit_price(item):
 
     unit_price = getattr(item, 'unit_price', None)
 
-    
+
     if unit_price is None or 'Mock' in str(type(unit_price)):
         return ""
 

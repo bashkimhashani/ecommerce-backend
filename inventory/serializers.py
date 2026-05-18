@@ -13,7 +13,7 @@ class InventorySerializer(serializers.ModelSerializer):
     )
     variant_name = serializers.SerializerMethodField()
     is_low_stock = serializers.BooleanField(read_only=True)
-    
+
     class Meta:
         model = Inventory
         fields = [
