@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -76,7 +78,10 @@ class Cart(TenantModel):
 
     @property
     def subtotal(self):
-        return sum(item.line_total for item in self.items.all())
+        return sum(
+            (item.line_total for item in self.items.all()),
+            Decimal('0.00'),
+        )
 
     def save(self, *args, **kwargs):
         if self.tenant_id is None:
