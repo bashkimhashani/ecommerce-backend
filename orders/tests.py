@@ -762,6 +762,7 @@ class VendorOrderConfirmEndpointTests(APITestCase):
         cart = Cart.objects.create(
             user=user,
             tenant=tenant,
+            status=Cart.Status.CHECKED_OUT,
         )
         checkout_session = CheckoutSession.objects.create(
             user=user,
@@ -851,36 +852,3 @@ class VendorOrderConfirmEndpointTests(APITestCase):
             ],
         )
 
-    def _create_order(self):
-        cart = Cart.objects.create(
-            user=self.user,
-            tenant=self.tenant,
-        )
-        checkout_session = CheckoutSession.objects.create(
-            user=self.user,
-            cart=cart,
-            idempotency_key='checkout-key-123',
-            shipping_address={
-                'full_name': 'Customer User',
-                'line1': 'Main street 1',
-                'city': 'Prishtina',
-                'postal_code': '10000',
-                'country': 'Kosovo',
-            },
-            status=CheckoutSession.Status.READY,
-            tenant=self.tenant,
-        )
-        return Order.objects.create(
-            user=self.user,
-            checkout_session=checkout_session,
-            shipping_address={
-                'full_name': 'Customer User',
-                'line1': 'Main street 1',
-                'city': 'Prishtina',
-                'postal_code': '10000',
-                'country': 'Kosovo',
-            },
-            subtotal=Decimal('99.00'),
-            total_amount=Decimal('99.00'),
-            tenant=self.tenant,
-        )

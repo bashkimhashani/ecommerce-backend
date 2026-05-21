@@ -22,6 +22,15 @@ def order_item_field_names(order_item_model):
     return {field.name for field in order_item_model._meta.get_fields()}
 
 
+def order_item_amount_field(order_item_model):
+    field_names = order_item_field_names(order_item_model)
+
+    if 'subtotal' in field_names:
+        return 'subtotal'
+
+    return 'line_total'
+
+
 def vendor_order_item_filter(order_item_model, vendor):
     field_names = order_item_field_names(order_item_model)
 
@@ -60,13 +69,16 @@ def serialize_decimal(value):
 
 def vendor_order_summary_rows(vendor):
     order_items = vendor_order_items(vendor)
+    OrderItem = get_order_item_model()
 
-    if order_items is None:
+    if order_items is None or OrderItem is None:
         return []
+
+    amount_field = order_item_amount_field(OrderItem)
 
     summary = order_items.values('order__status').annotate(
         count=Count('order_id', distinct=True),
-        total_amount=Sum('subtotal'),
+        total_amount=Sum(amount_field),
     ).order_by('order__status')
 
     return [
@@ -81,16 +93,19 @@ def vendor_order_summary_rows(vendor):
 
 def vendor_order_totals(vendor):
     order_items = vendor_order_items(vendor)
+    OrderItem = get_order_item_model()
 
-    if order_items is None:
+    if order_items is None or OrderItem is None:
         return {
             'order_count': 0,
             'revenue': Decimal('0.00'),
         }
 
+    amount_field = order_item_amount_field(OrderItem)
+
     totals = order_items.aggregate(
         order_count=Count('order_id', distinct=True),
-        revenue=Sum('subtotal'),
+        revenue=Sum(amount_field),
     )
 
     return {
