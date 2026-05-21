@@ -147,3 +147,14 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out backend
+        uses: actions/checkout@v4
+
+      - name: Build backend Docker image
+        run: docker build --tag ecommerce-backend:ci .
