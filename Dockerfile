@@ -38,6 +38,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
     && rm -rf /wheels
 
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir django-mptt==0.18.0 django-js-asset==3.1.2
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 COPY . .
 
 RUN chown -R django:django /app
@@ -46,4 +50,5 @@ USER django
 
 EXPOSE 8000
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
