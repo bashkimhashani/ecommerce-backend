@@ -10,13 +10,78 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    name: CI
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository
+      - name: Check out backend
         uses: actions/checkout@v4
+        with:
+          path: ecommerce-backend
 
-      - name: Confirm workflow is configured
-        run: echo "CI workflow is ready for lint, test, and build steps."
+      - name: Check out frontend
+        uses: actions/checkout@v4
+        with:
+          repository: bashkimhashani/ecommerce-frontend
+          path: ecommerce-frontend
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend lint dependencies
+        working-directory: ecommerce-backend
+        run: python -m pip install --upgrade pip flake8
+
+      - name: Lint backend with flake8
+        working-directory: ecommerce-backend
+        run: flake8 .
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ecommerce-frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ecommerce-frontend
+        run: npm ci
+
+      - name: Install frontend lint dependencies
+        working-directory: ecommerce-frontend
+        run: npm install --no-save eslint @eslint/js eslint-plugin-vue globals
+
+      - name: Lint frontend with ESLint
+        working-directory: ecommerce-frontend
+        run: |
+          cat > eslint.config.mjs <<'EOF'
+          import js from "@eslint/js";
+          import pluginVue from "eslint-plugin-vue";
+          import globals from "globals";
+
+          export default [
+            {
+              ignores: ["dist/**", "node_modules/**"],
+            },
+            js.configs.recommended,
+            ...pluginVue.configs["flat/recommended"],
+            {
+              files: ["**/*.{js,vue}"],
+              languageOptions: {
+                ecmaVersion: "latest",
+                sourceType: "module",
+                globals: {
+                  ...globals.browser,
+                  ...globals.es2021,
+                },
+              },
+              rules: {
+                "vue/multi-word-component-names": "off",
+              },
+            },
+          ];
+          EOF
+          npx eslint .
