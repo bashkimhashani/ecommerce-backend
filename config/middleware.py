@@ -28,7 +28,28 @@ class RequestLoggingMiddleware:
             'tenant_id': tenant_id,
         }
 
-        
+        logger.info(
+            (
+                'api_request method=%s path=%s status_code=%s '
+                'response_time_ms=%s tenant_id=%s'
+            ),
+            log_data['method'],
+            log_data['path'],
+            log_data['status_code'],
+            log_data['response_time_ms'],
+            log_data['tenant_id'],
+            extra=log_data,
+        )
+        self.create_request_log(log_data)
+
+    def create_request_log(self, log_data):
+        try:
+            from request_logs.models import RequestLog
+
+            RequestLog.objects.create(**log_data)
+        except Exception:
+            logger.exception('failed_to_persist_request_log')
+
 
     def get_tenant_id(self, request):
         tenant = getattr(request, 'tenant', None)
