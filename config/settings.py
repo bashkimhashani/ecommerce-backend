@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     'orders',
     'inventory',
     'vendor',
+    'request_logs',
 ]
 
 AUTH_USER_MODEL = 'users.User'
@@ -76,6 +77,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'tenants.middleware.TenantMiddleware',
+    'config.middleware.RequestLoggingMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -225,6 +227,23 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'Ecommerce API',
     'DESCRIPTION': 'API for the Distributed Systems ecommerce project',
     'VERSION': '1.0.0',
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'request_logs': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
 }
 
 # Celery
