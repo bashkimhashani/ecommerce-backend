@@ -507,6 +507,23 @@ class UserProfileTests(APITestCase):
             content_type='image/jpeg',
         )
 
+    def test_user_can_get_own_profile(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.get(reverse('user-me'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], self.user.id)
+        self.assertEqual(response.data['email'], 'customer@example.com')
+        self.assertEqual(response.data['first_name'], 'Customer')
+        self.assertEqual(response.data['last_name'], 'User')
+        self.assertEqual(response.data['role'], 'customer')
+        self.assertEqual(response.data['tenant'], self.tenant.id)
+        self.assertIsNone(response.data['phone'])
+        self.assertIn('avatar', response.data)
+        self.assertIn('avatar_thumbnail', response.data)
+        self.assertIn('date_joined', response.data)
+
     def test_user_can_patch_own_profile(self):
         self.client.force_authenticate(user=self.user)
 
@@ -545,6 +562,25 @@ class UserProfileTests(APITestCase):
         self.assertEqual(self.user.tenant, self.tenant)
         self.assertEqual(response.data['role'], 'customer')
         self.assertEqual(response.data['tenant'], self.tenant.id)
+
+    def test_profile_patch_does_not_update_email_or_date_joined(self):
+        self.client.force_authenticate(user=self.user)
+        original_date_joined = self.user.date_joined
+
+        response = self.client.patch(
+            reverse('user-me'),
+            {
+                'email': 'changed@example.com',
+                'date_joined': '2000-01-01T00:00:00Z',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, 'customer@example.com')
+        self.assertEqual(self.user.date_joined, original_date_joined)
+        self.assertEqual(response.data['email'], 'customer@example.com')
 
     def test_auth_me_route_also_supports_patch(self):
         self.client.force_authenticate(user=self.user)
@@ -607,6 +643,11 @@ class UserProfileTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('avatar', response.data)
+
+    def test_profile_get_requires_authentication(self):
+        response = self.client.get(reverse('user-me'))
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_profile_patch_requires_authentication(self):
         response = self.client.patch(
