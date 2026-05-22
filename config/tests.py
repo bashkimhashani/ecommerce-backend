@@ -1,13 +1,16 @@
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.http import HttpResponse
-from django.test import RequestFactory, SimpleTestCase
+from django.test import RequestFactory, TestCase
+
+from request_logs.models import RequestLog
 
 from .middleware import RequestLoggingMiddleware
 
 
-class RequestLoggingMiddlewareTests(SimpleTestCase):
+class RequestLoggingMiddlewareTests(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
@@ -46,6 +49,13 @@ class RequestLoggingMiddlewareTests(SimpleTestCase):
         )
         self.assertEqual(perf_counter.call_count, 2)
 
+        request_log = RequestLog.objects.get()
+        self.assertEqual(request_log.method, 'POST')
+        self.assertEqual(request_log.path, '/api/v1/cart/')
+        self.assertEqual(request_log.status_code, 201)
+        self.assertEqual(request_log.response_time_ms, Decimal('123.45'))
+        self.assertEqual(request_log.tenant_id, 42)
+
     @patch('config.middleware.logger.info')
     def test_skips_non_api_requests(self, logger_info):
         middleware = RequestLoggingMiddleware(
@@ -57,6 +67,7 @@ class RequestLoggingMiddlewareTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         logger_info.assert_not_called()
+        self.assertEqual(RequestLog.objects.count(), 0)
 
     @patch('config.middleware.time.perf_counter', side_effect=[1.0, 1.01])
     @patch('config.middleware.logger.info')
@@ -73,4 +84,5 @@ class RequestLoggingMiddlewareTests(SimpleTestCase):
             logger_info.call_args.kwargs['extra']['tenant_id'],
             99,
         )
+        self.assertEqual(RequestLog.objects.get().tenant_id, 99)
         self.assertEqual(perf_counter.call_count, 2)

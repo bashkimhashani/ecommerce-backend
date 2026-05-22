@@ -865,7 +865,7 @@ class ProductListEndpointTests(APITestCase):
             )
         self.client.force_authenticate(user=self.user)
 
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(3):
             response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1978,7 +1978,7 @@ class ProductDetailEndpointTests(APITestCase):
             is_primary=True,
         )
 
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(4):
             response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
