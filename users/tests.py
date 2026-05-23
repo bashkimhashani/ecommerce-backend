@@ -58,6 +58,219 @@ class AuthEndpointPermissionTests(SimpleTestCase):
                 self.assert_permission_classes(url_name, [IsAuthenticated])
 
 
+class RoleEndpointForbiddenMatrixTests(APITestCase):
+    all_roles = ('superadmin', 'vendor_admin', 'store_staff', 'customer')
+    role_endpoint_matrix = (
+        {
+            'name': 'checkout-session',
+            'method': 'post',
+            'url_name': 'checkout-session',
+            'allowed_roles': ('customer',),
+        },
+        {
+            'name': 'checkout-session-address',
+            'method': 'patch',
+            'url_name': 'checkout-session-address',
+            'args': (1,),
+            'allowed_roles': ('customer',),
+        },
+        {
+            'name': 'checkout-session-payment-intent',
+            'method': 'post',
+            'url_name': 'checkout-session-payment-intent',
+            'args': (1,),
+            'allowed_roles': ('customer',),
+        },
+        {
+            'name': 'customer-order-list',
+            'method': 'get',
+            'url_name': 'customer-order-list',
+            'allowed_roles': ('customer',),
+        },
+        {
+            'name': 'customer-order-detail',
+            'method': 'get',
+            'url_name': 'customer-order-detail',
+            'args': ('ORD-123',),
+            'allowed_roles': ('customer',),
+        },
+        {
+            'name': 'customer-order-cancel',
+            'method': 'post',
+            'url_name': 'customer-order-cancel',
+            'args': (1,),
+            'allowed_roles': ('customer',),
+        },
+        {
+            'name': 'product-list-create',
+            'method': 'post',
+            'url_name': 'product-list',
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'product-detail-update',
+            'method': 'put',
+            'url_name': 'product-detail',
+            'args': ('sample-product',),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'product-detail-delete',
+            'method': 'delete',
+            'url_name': 'product-detail',
+            'args': ('sample-product',),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'product-image-upload',
+            'method': 'post',
+            'url_name': 'product-image-upload',
+            'args': ('sample-product',),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'product-image-reorder',
+            'method': 'patch',
+            'url_name': 'product-image-upload',
+            'args': ('sample-product',),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'product-image-delete',
+            'method': 'delete',
+            'url_name': 'product-image-delete',
+            'args': ('sample-product', 1),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-dashboard-summary',
+            'method': 'get',
+            'url_name': 'vendor-dashboard-summary',
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-inventory-list',
+            'method': 'get',
+            'url_name': 'vendor-inventory-list',
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-inventory-detail',
+            'method': 'patch',
+            'url_name': 'vendor-inventory-detail',
+            'args': (1,),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-order-summary',
+            'method': 'get',
+            'url_name': 'vendor-order-summary',
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-order-export',
+            'method': 'get',
+            'url_name': 'vendor-order-export',
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-export-status',
+            'method': 'get',
+            'url_name': 'export-status',
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-order-list',
+            'method': 'get',
+            'url_name': 'vendor-order-list',
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-order-confirm',
+            'method': 'post',
+            'url_name': 'vendor-order-confirm',
+            'args': (1,),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-order-mark-shipped',
+            'method': 'post',
+            'url_name': 'vendor-order-mark-shipped',
+            'args': (1,),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'vendor-order-mark-delivered',
+            'method': 'post',
+            'url_name': 'vendor-order-mark-delivered',
+            'args': (1,),
+            'allowed_roles': ('vendor_admin',),
+        },
+        {
+            'name': 'admin-request-log-list',
+            'method': 'get',
+            'url_name': 'admin-request-log-list',
+            'allowed_roles': ('superadmin',),
+        },
+    )
+
+    def setUp(self):
+        self.users_by_role = {
+            'superadmin': User.objects.create_superuser(
+                email='superadmin@example.com',
+                password='StrongPass123',
+                first_name='Super',
+                last_name='Admin',
+            ),
+            'vendor_admin': User.objects.create_user(
+                email='vendor-admin@example.com',
+                password='StrongPass123',
+                first_name='Vendor',
+                last_name='Admin',
+                role='vendor_admin',
+            ),
+            'store_staff': User.objects.create_user(
+                email='store-staff@example.com',
+                password='StrongPass123',
+                first_name='Store',
+                last_name='Staff',
+                role='store_staff',
+            ),
+            'customer': User.objects.create_user(
+                email='customer-role@example.com',
+                password='StrongPass123',
+                first_name='Customer',
+                last_name='User',
+                role='customer',
+            ),
+        }
+
+    def request_endpoint(self, endpoint):
+        url = reverse(endpoint['url_name'], args=endpoint.get('args', ()))
+        method = getattr(self.client, endpoint['method'])
+        if endpoint['method'] in {'post', 'put', 'patch'}:
+            return method(url, {}, format='json')
+        return method(url)
+
+    def test_disallowed_roles_receive_403_for_role_protected_endpoints(self):
+        for endpoint in self.role_endpoint_matrix:
+            disallowed_roles = (
+                set(self.all_roles) - set(endpoint['allowed_roles'])
+            )
+            for role in sorted(disallowed_roles):
+                with self.subTest(endpoint=endpoint['name'], role=role):
+                    self.client.force_authenticate(
+                        user=self.users_by_role[role],
+                    )
+
+                    response = self.request_endpoint(endpoint)
+
+                    self.assertEqual(
+                        response.status_code,
+                        status.HTTP_403_FORBIDDEN,
+                    )
+
+
 class RoleGroupMigrationTests(APITestCase):
     def test_role_groups_exist_after_migrations(self):
         expected_groups = {
