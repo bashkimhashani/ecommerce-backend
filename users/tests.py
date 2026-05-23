@@ -94,7 +94,8 @@ class RoleGroupAssignmentTests(APITestCase):
                     role=role,
                 )
 
-                self.assertTrue(user.groups.filter(name=role).exists())
+                assigned_groups = set(user.groups.values_list('name', flat=True))
+                self.assertEqual(assigned_groups, {role})
 
     def test_superadmin_is_not_assigned_managed_role_group(self):
         user = User.objects.create_superuser(
