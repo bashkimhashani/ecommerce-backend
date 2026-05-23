@@ -1,4 +1,5 @@
 from io import BytesIO
+from datetime import timedelta
 import shutil
 import tempfile
 from unittest.mock import Mock, patch
@@ -174,6 +175,64 @@ class AdminModulePermissionTests(APITestCase):
         user.save(update_fields=['is_active'])
 
         self.assertFalse(user.has_module_perms('catalog'))
+
+
+class LoginEndpointTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='customer@example.com',
+            password='StrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+        )
+
+    def test_login_success_returns_access_and_refresh_tokens(self):
+        response = self.client.post(
+            reverse('login'),
+            {
+                'email': 'customer@example.com',
+                'password': 'StrongPass123',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertEqual(
+            AccessToken(response.data['access'])['user_id'],
+            str(self.user.id),
+        )
+        self.assertEqual(
+            RefreshToken(response.data['refresh'])['user_id'],
+            str(self.user.id),
+        )
+
+    def test_login_wrong_password_is_rejected(self):
+        response = self.client.post(
+            reverse('login'),
+            {
+                'email': 'customer@example.com',
+                'password': 'WrongStrongPass123',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn('access', response.data)
+        self.assertNotIn('refresh', response.data)
+        self.assertIn('detail', response.data)
+
+    def test_expired_access_token_is_rejected(self):
+        token = AccessToken.for_user(self.user)
+        token.set_exp(lifetime=timedelta(seconds=-1))
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(token)}')
+        response = self.client.get(reverse('me'))
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['code'], 'token_not_valid')
 
 
 class JwtClaimsTests(APITestCase):
