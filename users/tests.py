@@ -234,6 +234,14 @@ class LoginEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(response.data['code'], 'token_not_valid')
 
+    def test_invalid_access_token_is_rejected(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer not-a-valid-token')
+
+        response = self.client.get(reverse('me'))
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['code'], 'token_not_valid')
+
 
 class JwtClaimsTests(APITestCase):
     def setUp(self):
