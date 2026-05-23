@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SSH E-commerce{% endblock %}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f6f8;
+            color: #1f2937;
+            font-family: Arial, Helvetica, sans-serif;
+            line-height: 1.5;
+        }
+
+        table {
+            border-collapse: collapse;
+        }
+
+        .email-wrapper {
+            width: 100%;
+            background-color: #f4f6f8;
+            padding: 24px 0;
+        }
+
+        .email-container {
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .email-header {
+            background-color: #111827;
+            color: #ffffff;
+            padding: 24px 32px;
+        }
+
+        .email-header h1 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .email-content {
+            padding: 32px;
+            font-size: 16px;
+        }
+
+        .email-content p {
+            margin: 0 0 16px;
+        }
+
+        .email-button {
+            display: inline-block;
+            padding: 12px 18px;
+            background-color: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 700;
+        }
+
+        .email-footer {
+            padding: 20px 32px;
+            background-color: #f9fafb;
+            color: #6b7280;
+            font-size: 13px;
+        }
+
+        .email-footer p {
+            margin: 0 0 8px;
+        }
+    </style>
+</head>
+<body>
+    <table role="presentation" class="email-wrapper" width="100%">
+        <tr>
+            <td align="center">
+                <table role="presentation" class="email-container" width="100%">
+                    <tr>
+                        <td class="email-header">
+                            {% block header %}
+                                <h1>{{ email_heading|default:"SSH E-commerce" }}</h1>
+                            {% endblock %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="email-content">
+                            {% block content %}{% endblock %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="email-footer">
+                            {% block footer %}
+                                <p>&copy; {% now "Y" %} SSH E-commerce. All rights reserved.</p>
+                                <p>This is an automated message. Please do not reply to this email.</p>
+                            {% endblock %}
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
