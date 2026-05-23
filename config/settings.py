@@ -3,6 +3,7 @@ from datetime import timedelta
 
 import environ
 import stripe
+from kombu import Exchange, Queue
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -254,3 +255,37 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_DEFAULT_EXCHANGE = 'default'
+CELERY_TASK_DEFAULT_ROUTING_KEY = 'default'
+CELERY_TASK_QUEUES = (
+    Queue('default', Exchange('default'), routing_key='default'),
+    Queue('emails', Exchange('emails'), routing_key='emails'),
+    Queue('ai', Exchange('ai'), routing_key='ai'),
+)
+CELERY_TASK_ROUTES = {
+    'users.tasks.send_email_verification_email': {
+        'queue': 'emails',
+        'routing_key': 'emails',
+    },
+    'users.tasks.send_password_reset_email': {
+        'queue': 'emails',
+        'routing_key': 'emails',
+    },
+    'orders.tasks.send_order_status_email': {
+        'queue': 'emails',
+        'routing_key': 'emails',
+    },
+    'inventory.tasks.send_low_stock_alert': {
+        'queue': 'emails',
+        'routing_key': 'emails',
+    },
+    'notifications.tasks.*': {
+        'queue': 'emails',
+        'routing_key': 'emails',
+    },
+    'ai.tasks.*': {
+        'queue': 'ai',
+        'routing_key': 'ai',
+    },
+}
