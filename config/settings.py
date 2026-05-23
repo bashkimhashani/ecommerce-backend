@@ -289,3 +289,11 @@ CELERY_TASK_ROUTES = {
         'routing_key': 'ai',
     },
 }
+CELERY_TASK_ANNOTATIONS = {
+    '*': {
+        'max_retries': 3,
+        'retry_backoff': True,
+        'retry_backoff_max': 600,
+        'retry_jitter': True,
+    },
+}
