@@ -2,12 +2,64 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.conf import settings
 from django.http import HttpResponse
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase
 
+from config.celery import app as celery_app
 from request_logs.models import RequestLog
 
 from .middleware import RequestLoggingMiddleware
+
+
+class CeleryRoutingSettingsTests(SimpleTestCase):
+    def test_declares_default_email_and_ai_queues(self):
+        queues = {queue.name: queue for queue in settings.CELERY_TASK_QUEUES}
+
+        self.assertEqual(set(queues), {'default', 'emails', 'ai'})
+        self.assertEqual(settings.CELERY_TASK_DEFAULT_QUEUE, 'default')
+        self.assertEqual(settings.CELERY_TASK_DEFAULT_EXCHANGE, 'default')
+        self.assertEqual(settings.CELERY_TASK_DEFAULT_ROUTING_KEY, 'default')
+
+        for queue_name, queue in queues.items():
+            self.assertEqual(queue.exchange.name, queue_name)
+            self.assertEqual(queue.routing_key, queue_name)
+
+    def test_routes_email_tasks_to_emails_queue(self):
+        email_task_names = [
+            'users.tasks.send_email_verification_email',
+            'users.tasks.send_password_reset_email',
+            'orders.tasks.send_order_status_email',
+            'inventory.tasks.send_low_stock_alert',
+            'notifications.tasks.send_order_confirmation',
+        ]
+
+        for task_name in email_task_names:
+            with self.subTest(task_name=task_name):
+                self.assert_task_routes_to_queue(task_name, 'emails')
+
+    def test_routes_ai_tasks_to_ai_queue(self):
+        self.assert_task_routes_to_queue(
+            'ai.tasks.generate_sales_insight',
+            'ai',
+        )
+
+    def test_unmatched_tasks_route_to_default_queue(self):
+        self.assert_task_routes_to_queue(
+            'vendor.tasks.export_vendor_orders_csv',
+            'default',
+        )
+
+    def assert_task_routes_to_queue(self, task_name, expected_queue_name):
+        route = celery_app.amqp.router.route({}, task_name, (), {})
+        queue = route['queue']
+
+        self.assertEqual(queue.name, expected_queue_name)
+        self.assertEqual(queue.exchange.name, expected_queue_name)
+        self.assertEqual(queue.routing_key, expected_queue_name)
+
+        if 'routing_key' in route:
+            self.assertEqual(route['routing_key'], expected_queue_name)
 
 
 class RequestLoggingMiddlewareTests(TestCase):
