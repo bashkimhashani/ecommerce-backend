@@ -86,3 +86,67 @@ class RequestLoggingMiddlewareTests(TestCase):
         )
         self.assertEqual(RequestLog.objects.get().tenant_id, 99)
         self.assertEqual(perf_counter.call_count, 2)
+
+    @patch('config.middleware.time.perf_counter', side_effect=[2.0, 2.025])
+    @patch('config.middleware.logger.info')
+    def test_logs_authenticated_api_request(self, logger_info, perf_counter):
+        middleware = RequestLoggingMiddleware(
+            lambda request: HttpResponse(status=200),
+        )
+        request = self.factory.get('/api/v1/orders/')
+        request.user = SimpleNamespace(
+            is_authenticated=True,
+            tenant_id=123,
+        )
+
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 200)
+        logger_info.assert_called_once()
+        self.assertEqual(
+            logger_info.call_args.kwargs['extra'],
+            {
+                'method': 'GET',
+                'path': '/api/v1/orders/',
+                'status_code': 200,
+                'response_time_ms': 25.0,
+                'tenant_id': 123,
+            },
+        )
+        request_log = RequestLog.objects.get()
+        self.assertEqual(request_log.method, 'GET')
+        self.assertEqual(request_log.path, '/api/v1/orders/')
+        self.assertEqual(request_log.status_code, 200)
+        self.assertEqual(request_log.response_time_ms, Decimal('25.00'))
+        self.assertEqual(request_log.tenant_id, 123)
+        self.assertEqual(perf_counter.call_count, 2)
+
+    @patch('config.middleware.time.perf_counter', side_effect=[3.0, 3.004])
+    @patch('config.middleware.logger.info')
+    def test_logs_unauthenticated_api_request(self, logger_info, perf_counter):
+        middleware = RequestLoggingMiddleware(
+            lambda request: HttpResponse(status=401),
+        )
+        request = self.factory.get('/api/v1/orders/')
+
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 401)
+        logger_info.assert_called_once()
+        self.assertEqual(
+            logger_info.call_args.kwargs['extra'],
+            {
+                'method': 'GET',
+                'path': '/api/v1/orders/',
+                'status_code': 401,
+                'response_time_ms': 4.0,
+                'tenant_id': None,
+            },
+        )
+        request_log = RequestLog.objects.get()
+        self.assertEqual(request_log.method, 'GET')
+        self.assertEqual(request_log.path, '/api/v1/orders/')
+        self.assertEqual(request_log.status_code, 401)
+        self.assertEqual(request_log.response_time_ms, Decimal('4.00'))
+        self.assertIsNone(request_log.tenant_id)
+        self.assertEqual(perf_counter.call_count, 2)
