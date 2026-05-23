@@ -20,6 +20,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from tenants.models import Tenant
 from .token_blacklist import get_token_blacklist_key
+from .tokens import email_verification_token_generator
 
 
 User = get_user_model()
@@ -33,6 +34,7 @@ class AuthEndpointPermissionTests(SimpleTestCase):
     def test_public_auth_endpoints_have_explicit_permissions(self):
         public_endpoints = [
             'register',
+            'email-verify',
             'login',
             'token_refresh',
             'password-reset',
@@ -286,6 +288,175 @@ class JwtClaimsTests(APITestCase):
         self.assertIsNone(access_token['tenant_id'])
         self.assertEqual(refresh_token['role'], 'customer')
         self.assertIsNone(refresh_token['tenant_id'])
+
+
+class RegistrationEndpointTests(APITestCase):
+    def register_payload(self, **overrides):
+        payload = {
+            'email': 'new-customer@example.com',
+            'first_name': 'New',
+            'last_name': 'Customer',
+            'password': 'StrongPass123',
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_registration_creates_unverified_user_and_sends_verification_email(self):
+        with patch('users.views.send_email_verification_email.delay') as delay:
+            response = self.client.post(
+                reverse('register'),
+                self.register_payload(),
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertNotIn('password', response.data['user'])
+        self.assertEqual(response.data['user']['email'], 'new-customer@example.com')
+        self.assertFalse(response.data['user']['is_email_verified'])
+
+        user = User.objects.get(email='new-customer@example.com')
+        self.assertEqual(user.first_name, 'New')
+        self.assertEqual(user.last_name, 'Customer')
+        self.assertEqual(user.role, 'customer')
+        self.assertTrue(user.check_password('StrongPass123'))
+        self.assertFalse(user.is_email_verified)
+
+        delay.assert_called_once()
+        user_id, uid, token = delay.call_args.args
+        self.assertEqual(user_id, user.id)
+        self.assertEqual(uid, urlsafe_base64_encode(force_bytes(user.pk)))
+        self.assertTrue(
+            email_verification_token_generator.check_token(user, token),
+        )
+
+    def test_registration_honors_valid_role(self):
+        with patch('users.views.send_email_verification_email.delay'):
+            response = self.client.post(
+                reverse('register'),
+                self.register_payload(
+                    email='vendor@example.com',
+                    role='vendor_admin',
+                ),
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['user']['role'], 'vendor_admin')
+        self.assertTrue(
+            User.objects.get(email='vendor@example.com')
+            .groups.filter(name='vendor_admin')
+            .exists(),
+        )
+
+    def test_registration_rejects_duplicate_email_without_sending_email(self):
+        User.objects.create_user(
+            email='new-customer@example.com',
+            password='StrongPass123',
+            first_name='Existing',
+            last_name='Customer',
+        )
+
+        with patch('users.views.send_email_verification_email.delay') as delay:
+            response = self.client.post(
+                reverse('register'),
+                self.register_payload(),
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data)
+        delay.assert_not_called()
+        self.assertEqual(
+            User.objects.filter(email='new-customer@example.com').count(),
+            1,
+        )
+
+    def test_registration_rejects_invalid_payload_without_sending_email(self):
+        with patch('users.views.send_email_verification_email.delay') as delay:
+            response = self.client.post(
+                reverse('register'),
+                self.register_payload(email='not-an-email', password='short'),
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data)
+        self.assertIn('password', response.data)
+        delay.assert_not_called()
+
+
+class EmailVerificationEndpointTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='customer@example.com',
+            password='StrongPass123',
+            first_name='Customer',
+            last_name='User',
+            role='customer',
+        )
+        self.uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+
+    def verification_token(self):
+        self.user.refresh_from_db()
+        return email_verification_token_generator.make_token(self.user)
+
+    def test_email_verification_marks_user_as_verified(self):
+        token = self.verification_token()
+
+        response = self.client.post(
+            reverse('email-verify'),
+            {'uid': self.uid, 'token': token},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_email_verified)
+        self.assertEqual(
+            response.data['message'],
+            'Email has been verified successfully.',
+        )
+
+    def test_email_verification_rejects_invalid_token(self):
+        response = self.client.post(
+            reverse('email-verify'),
+            {'uid': self.uid, 'token': 'invalid-token'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_email_verified)
+
+    def test_email_verification_rejects_invalid_uid(self):
+        response = self.client.post(
+            reverse('email-verify'),
+            {'uid': 'not-a-valid-uid', 'token': self.verification_token()},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_email_verified)
+
+    def test_email_verification_token_cannot_be_reused(self):
+        token = self.verification_token()
+
+        first_response = self.client.post(
+            reverse('email-verify'),
+            {'uid': self.uid, 'token': token},
+            format='json',
+        )
+        second_response = self.client.post(
+            reverse('email-verify'),
+            {'uid': self.uid, 'token': token},
+            format='json',
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class FakeRedisConnection:

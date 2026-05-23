@@ -11,6 +11,8 @@ from django.utils.http import urlsafe_base64_decode
 from PIL import Image
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+from .tokens import email_verification_token_generator
+
 User = get_user_model()
 
 
@@ -61,6 +63,7 @@ class UserSerializer(serializers.ModelSerializer):
             'role',
             'tenant',
             'phone',
+            'is_email_verified',
             'avatar',
             'avatar_thumbnail',
             'date_joined'
@@ -79,6 +82,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             'role',
             'tenant',
             'phone',
+            'is_email_verified',
             'avatar',
             'avatar_thumbnail',
             'date_joined'
@@ -88,6 +92,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             'email',
             'role',
             'tenant',
+            'is_email_verified',
             'avatar_thumbnail',
             'date_joined'
         ]
@@ -160,6 +165,31 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
 class PasswordResetSerializer(serializers.Serializer):
     email = serializers.EmailField()
+
+
+class EmailVerificationSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+
+    def validate(self, attrs):
+        try:
+            uid = force_str(urlsafe_base64_decode(attrs['uid']))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError({
+                'token': 'Invalid email verification token.'
+            })
+
+        if not email_verification_token_generator.check_token(
+            user,
+            attrs['token'],
+        ):
+            raise serializers.ValidationError({
+                'token': 'Invalid or expired email verification token.'
+            })
+
+        attrs['user'] = user
+        return attrs
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):

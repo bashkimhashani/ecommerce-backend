@@ -68,6 +68,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         related_name='users'
     )
     phone = models.CharField(max_length=20, null=True, blank=True)
+    is_email_verified = models.BooleanField(default=False)
     avatar = models.ImageField(
         upload_to=user_avatar_upload_path,
         null=True,

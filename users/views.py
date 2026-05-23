@@ -20,14 +20,16 @@ from cart.models import Cart
 from cart.services import CartService
 from .serializers import (
     CustomTokenObtainPairSerializer,
+    EmailVerificationSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetSerializer,
     RegisterSerializer,
     UserProfileUpdateSerializer,
     UserSerializer,
 )
-from .tasks import send_password_reset_email
+from .tasks import send_email_verification_email, send_password_reset_email
 from .token_blacklist import blacklist_token_in_redis
+from .tokens import email_verification_token_generator
 
 
 User = get_user_model()
@@ -80,6 +82,9 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = email_verification_token_generator.make_token(user)
+            send_email_verification_email.delay(user.id, uid, token)
             refresh = CustomTokenObtainPairSerializer.get_token(user)
             return Response({
                 'user': UserSerializer(user).data,
@@ -89,6 +94,30 @@ class RegisterView(APIView):
         return Response(
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class EmailVerificationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = EmailVerificationSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            if user.is_email_verified:
+                return Response(
+                    {'message': 'Email is already verified.'},
+                    status=status.HTTP_200_OK,
+                )
+            user.is_email_verified = True
+            user.save(update_fields=['is_email_verified'])
+            return Response(
+                {'message': 'Email has been verified successfully.'},
+                status=status.HTTP_200_OK,
+            )
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
 
