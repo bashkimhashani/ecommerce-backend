@@ -16,6 +16,7 @@ urlpatterns = [
     path('api/v1/cart/', include('cart.urls')),
     path('api/v1/checkout/', include('checkout.urls')),
     path('api/v1/', include('orders.urls')),
+    path('api/v1/admin/', include('request_logs.urls')),
     path(
         'api/v1/webhooks/stripe/',
         StripeWebhookView.as_view(),
