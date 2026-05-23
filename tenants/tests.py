@@ -257,11 +257,13 @@ class TenantRegistrationTests(APITestCase):
             slug='acme-store',
             domain='existing.example.com',
         )
+        tenant_count = Tenant.objects.count()
 
         response = self.client.post(self.url, self.payload, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('slug', response.data)
+        self.assertEqual(Tenant.objects.count(), tenant_count)
         self.assertEqual(User.objects.count(), 0)
 
     def test_invalid_domain_is_rejected(self):
@@ -289,6 +291,7 @@ class TenantRegistrationTests(APITestCase):
                 self.client.post(self.url, self.payload, format='json')
 
         self.assertFalse(Tenant.objects.filter(slug='acme-store').exists())
+        self.assertFalse(User.objects.filter(email='owner@acme.com').exists())
 
     def test_tenant_and_vendor_admin_roll_back_when_owner_assignment_fails(self):
         original_save = Tenant.save
