@@ -20,12 +20,15 @@ env = environ.Env(
     STRIPE_WEBHOOK_SECRET=(str, ''),
     FRONTEND_URL=(str, 'http://localhost:5173'),
     DEFAULT_FROM_EMAIL=(str, 'noreply@example.com'),
-    EMAIL_BACKEND=(str, 'django.core.mail.backends.console.EmailBackend'),
+    EMAIL_BACKEND=(str, 'sendgrid_backend.SendgridBackend'),
     EMAIL_HOST=(str, 'localhost'),
     EMAIL_PORT=(int, 25),
     EMAIL_USE_TLS=(bool, False),
     EMAIL_HOST_USER=(str, ''),
     EMAIL_HOST_PASSWORD=(str, ''),
+    SENDGRID_API_KEY=(str, ''),
+    SENDGRID_SANDBOX_MODE_IN_DEBUG=(bool, True),
+    SENDGRID_ECHO_TO_STDOUT=(bool, False),
     OPENAI_API_KEY=(str, ''),
     AWS_STORAGE_BUCKET_NAME=(str, ''),
     AWS_S3_REGION_NAME=(str, ''),
@@ -198,6 +201,9 @@ EMAIL_PORT = env('EMAIL_PORT')
 EMAIL_USE_TLS = env('EMAIL_USE_TLS')
 EMAIL_HOST_USER = env('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+SENDGRID_API_KEY = env('SENDGRID_API_KEY')
+SENDGRID_SANDBOX_MODE_IN_DEBUG = env('SENDGRID_SANDBOX_MODE_IN_DEBUG')
+SENDGRID_ECHO_TO_STDOUT = env('SENDGRID_ECHO_TO_STDOUT')
 
 OPENAI_API_KEY = env('OPENAI_API_KEY')
 
