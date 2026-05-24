@@ -917,7 +917,7 @@ class ProductListEndpointTests(APITestCase):
         self.create_product()
         self.client.force_authenticate(user=self.user)
 
-        with patch('catalog.views.cache.get_or_set') as get_or_set:
+        with patch('catalog.services.cache.get_or_set') as get_or_set:
             get_or_set.side_effect = (
                 lambda cache_key, default, timeout: default()
             )
@@ -2038,7 +2038,7 @@ class ProductDetailEndpointTests(APITestCase):
         self.assertEqual(len(response.data['images']), 1)
 
     def test_product_detail_endpoint_uses_cache_get_or_set_with_600s_ttl(self):
-        with patch('catalog.views.cache.get_or_set') as get_or_set:
+        with patch('catalog.services.cache.get_or_set') as get_or_set:
             get_or_set.side_effect = (
                 lambda cache_key, default, timeout: default()
             )

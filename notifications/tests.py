@@ -76,7 +76,7 @@ class PasswordResetEmailQueueingTests(APITestCase):
         )
 
     def test_password_reset_endpoint_queues_notification_task(self):
-        with patch('users.views.send_password_reset_email.delay') as delay:
+        with patch('users.services.send_password_reset_email.delay') as delay:
             response = self.client.post(
                 reverse('password-reset'),
                 {'email': self.user.email},
