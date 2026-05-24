@@ -5,7 +5,7 @@ from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_order_confirmation(order_id):
     from orders.models import Order
 
@@ -49,7 +49,7 @@ def send_order_confirmation(order_id):
     }
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_order_shipped(order_id):
     from orders.models import Order
 
