@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
 from catalog.models import Brand, Category, Product
+from vendor.models import VendorProfile
 from .cache import tenant_cache_key
 from .middleware import _thread_locals
 from .models import Tenant
@@ -246,6 +247,10 @@ class TenantRegistrationTests(APITestCase):
         self.assertEqual(tenant.owner, user)
         self.assertEqual(response.data['tenant']['id'], tenant.id)
         self.assertEqual(response.data['user']['id'], user.id)
+        vendor_profile = VendorProfile.objects.get(user=user, tenant=tenant)
+        self.assertEqual(vendor_profile.store_name, 'Acme Store')
+        self.assertEqual(vendor_profile.contact_email, 'owner@acme.com')
+        self.assertEqual(vendor_profile.contact_phone, '+123456789')
 
         access_token = AccessToken(response.data['access'])
         self.assertEqual(access_token['role'], 'vendor_admin')

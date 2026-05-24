@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 from django_redis import get_redis_connection
 
 from users.permissions import IsVendorAdmin
+from vendor.models import VendorProfile
 
 from .filters import ProductFilter
 from .models import Category, Product, ProductImage
@@ -41,6 +42,14 @@ class VendorWritePermissionMixin:
         if self.request.method in self.vendor_write_methods:
             return [IsVendorAdmin()]
         return super().get_permissions()
+
+
+def get_request_vendor(request):
+    return VendorProfile.objects.filter(
+        user=request.user,
+        tenant=request.user.tenant,
+        is_active=True,
+    ).first()
 
 
 class CategoryTreeView(APIView):
@@ -156,6 +165,7 @@ class ProductListView(VendorWritePermissionMixin, APIView):
         ).select_related(
             'brand',
             'category',
+            'vendor',
         ).prefetch_related(
             Prefetch('images', queryset=product_images),
         )
@@ -183,7 +193,10 @@ class ProductListView(VendorWritePermissionMixin, APIView):
             context={'request': request},
         )
         serializer.is_valid(raise_exception=True)
-        product = serializer.save(tenant=request.user.tenant)
+        product = serializer.save(
+            tenant=request.user.tenant,
+            vendor=get_request_vendor(request),
+        )
         response_serializer = ProductDetailSerializer(
             product,
             context={'request': request},
@@ -269,6 +282,7 @@ class ProductSearchView(APIView):
         ).select_related(
             'brand',
             'category',
+            'vendor',
         ).prefetch_related(
             Prefetch('images', queryset=product_images),
         )
@@ -376,6 +390,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         ).select_related(
             'brand',
             'category',
+            'vendor',
         ).prefetch_related(
             'variants',
             'images',

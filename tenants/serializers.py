@@ -4,6 +4,8 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
+from vendor.models import VendorProfile
+
 from .models import Tenant
 
 
@@ -111,6 +113,14 @@ class TenantRegistrationSerializer(serializers.Serializer):
             )
             tenant.owner = user
             tenant.save(update_fields=['owner'])
+            VendorProfile.objects.create(
+                user=user,
+                tenant=tenant,
+                store_name=tenant.name,
+                contact_email=user.email,
+                contact_phone=user.phone,
+                is_active=True,
+            )
 
         return {
             'tenant': tenant,

@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from vendor.models import VendorProfile
+
 from .models import Brand, Category, Product, ProductImage, ProductVariant
 
 
@@ -33,6 +35,7 @@ class ProductListSerializer(serializers.ModelSerializer):
         max_digits=10,
         decimal_places=2,
     )
+    vendor = serializers.SerializerMethodField()
     thumbnail = serializers.SerializerMethodField()
     avg_rating = serializers.SerializerMethodField()
 
@@ -43,9 +46,17 @@ class ProductListSerializer(serializers.ModelSerializer):
             'name',
             'slug',
             'price',
+            'vendor',
             'thumbnail',
             'avg_rating',
         ]
+
+    def get_vendor(self, obj):
+        if obj.vendor_id is None:
+            return None
+
+        serializer = VendorSummarySerializer(obj.vendor)
+        return serializer.data
 
     def get_thumbnail(self, obj):
         primary_image = next(
@@ -118,6 +129,17 @@ class CategorySummarySerializer(serializers.ModelSerializer):
         ]
 
 
+class VendorSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VendorProfile
+        fields = [
+            'id',
+            'store_name',
+            'logo',
+            'rating',
+        ]
+
+
 class ProductVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductVariant
@@ -139,6 +161,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     )
     brand = BrandSummarySerializer(read_only=True)
     category = CategorySummarySerializer(read_only=True)
+    vendor = VendorSummarySerializer(read_only=True)
     variants = ProductVariantSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     specs = serializers.JSONField(source='tech_specs')
@@ -153,6 +176,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'sku',
             'brand',
             'category',
+            'vendor',
             'status',
             'price',
             'specs',
