@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiResponse,
@@ -11,19 +9,12 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from django.contrib.auth import get_user_model
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
-from rest_framework_simplejwt.tokens import RefreshToken
 
-from cart.models import Cart
-from cart.services import CartService
 from .serializers import (
     CustomTokenObtainPairSerializer,
     EmailVerificationSerializer,
@@ -33,13 +24,7 @@ from .serializers import (
     UserProfileUpdateSerializer,
     UserSerializer,
 )
-from .tasks import send_email_verification_email
-from notifications.tasks import send_password_reset_email
-from .token_blacklist import blacklist_token_in_redis
-from .tokens import email_verification_token_generator
-
-
-User = get_user_model()
+from .services import AuthService
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -85,28 +70,8 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         except TokenError as error:
             raise InvalidToken(error.args[0])
 
-        self._merge_guest_cart(request, serializer.user)
+        AuthService.merge_guest_cart(request, serializer.user)
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
-
-    @staticmethod
-    def _merge_guest_cart(request, user):
-        session = getattr(request, 'session', None)
-        session_key = getattr(session, 'session_key', None)
-        if not session_key:
-            return
-
-        guest_cart = Cart.objects.filter(
-            session_key=session_key,
-            status=Cart.Status.ACTIVE,
-        ).first()
-        if not guest_cart:
-            return
-
-        tenant = getattr(request, 'tenant', None) or user.tenant
-        user_cart = CartService.get_or_create_cart(
-            SimpleNamespace(user=user, tenant=tenant),
-        )
-        CartService.merge_carts(guest_cart, user_cart)
 
 
 class CustomTokenRefreshView(TokenRefreshView):
@@ -194,14 +159,10 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = email_verification_token_generator.make_token(user)
-            send_email_verification_email.delay(user.id, uid, token)
-            refresh = CustomTokenObtainPairSerializer.get_token(user)
+            token_pair = AuthService.complete_registration(user)
             return Response({
                 'user': UserSerializer(user).data,
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
+                **token_pair,
             }, status=status.HTTP_201_CREATED)
         return Response(
             serializer.errors,
@@ -241,13 +202,11 @@ class EmailVerificationView(APIView):
         serializer = EmailVerificationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            if user.is_email_verified:
+            if not AuthService.verify_email(user):
                 return Response(
                     {'message': 'Email is already verified.'},
                     status=status.HTTP_200_OK,
                 )
-            user.is_email_verified = True
-            user.save(update_fields=['is_email_verified'])
             return Response(
                 {'message': 'Email has been verified successfully.'},
                 status=status.HTTP_200_OK,
@@ -291,12 +250,10 @@ class LogoutView(APIView):
     )
     def post(self, request):
         try:
-            refresh_token = request.data['refresh']
-            token = RefreshToken(refresh_token)
-            blacklist_token_in_redis(token)
-            if request.auth:
-                blacklist_token_in_redis(request.auth)
-            token.blacklist()
+            AuthService.logout(
+                refresh_token=request.data['refresh'],
+                access_token=request.auth,
+            )
             return Response(
                 {'message': 'Logged out successfully'},
                 status=status.HTTP_200_OK
@@ -344,13 +301,9 @@ class PasswordResetView(APIView):
     def post(self, request):
         serializer = PasswordResetSerializer(data=request.data)
         if serializer.is_valid():
-            email = User.objects.normalize_email(
-                serializer.validated_data['email']
+            AuthService.request_password_reset(
+                serializer.validated_data['email'],
             )
-            user = User.objects.filter(email=email, is_active=True).first()
-            if user:
-                token = default_token_generator.make_token(user)
-                send_password_reset_email.delay(user.id, token)
             return Response(
                 {
                     'message': (
@@ -401,9 +354,10 @@ class PasswordResetConfirmView(APIView):
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.validated_data['user']
-            user.set_password(serializer.validated_data['new_password'])
-            user.save(update_fields=['password'])
+            AuthService.reset_password(
+                serializer.validated_data['user'],
+                serializer.validated_data['new_password'],
+            )
             return Response(
                 {'message': 'Password has been reset successfully.'},
                 status=status.HTTP_200_OK,

@@ -513,9 +513,9 @@ class JwtClaimsTests(APITestCase):
         self.assertEqual(access_token['role'], 'vendor_admin')
         self.assertEqual(access_token['tenant_id'], self.tenant.id)
 
-    @patch('users.views.CartService.merge_carts')
-    @patch('users.views.CartService.get_or_create_cart')
-    @patch('users.views.Cart.objects')
+    @patch('users.services.CartService.merge_carts')
+    @patch('users.services.CartService.get_or_create_cart')
+    @patch('users.services.Cart.objects')
     def test_login_merges_guest_cart_into_user_cart(
         self,
         cart_objects,
@@ -583,7 +583,7 @@ class RegistrationEndpointTests(APITestCase):
         return payload
 
     def test_registration_creates_unverified_user_and_sends_verification_email(self):
-        with patch('users.views.send_email_verification_email.delay') as delay:
+        with patch('users.services.send_email_verification_email.delay') as delay:
             response = self.client.post(
                 reverse('register'),
                 self.register_payload(),
@@ -613,7 +613,7 @@ class RegistrationEndpointTests(APITestCase):
         )
 
     def test_registration_honors_valid_role(self):
-        with patch('users.views.send_email_verification_email.delay'):
+        with patch('users.services.send_email_verification_email.delay'):
             response = self.client.post(
                 reverse('register'),
                 self.register_payload(
@@ -639,7 +639,7 @@ class RegistrationEndpointTests(APITestCase):
             last_name='Customer',
         )
 
-        with patch('users.views.send_email_verification_email.delay') as delay:
+        with patch('users.services.send_email_verification_email.delay') as delay:
             response = self.client.post(
                 reverse('register'),
                 self.register_payload(),
@@ -655,7 +655,7 @@ class RegistrationEndpointTests(APITestCase):
         )
 
     def test_registration_rejects_invalid_payload_without_sending_email(self):
-        with patch('users.views.send_email_verification_email.delay') as delay:
+        with patch('users.services.send_email_verification_email.delay') as delay:
             response = self.client.post(
                 reverse('register'),
                 self.register_payload(email='not-an-email', password='short'),
@@ -824,7 +824,7 @@ class PasswordResetTests(APITestCase):
         )
 
     def test_password_reset_sends_email_task_for_existing_user(self):
-        with patch('users.views.send_password_reset_email.delay') as delay:
+        with patch('users.services.send_password_reset_email.delay') as delay:
             response = self.client.post(
                 reverse('password-reset'),
                 {'email': 'customer@example.com'},
@@ -838,7 +838,7 @@ class PasswordResetTests(APITestCase):
         self.assertTrue(default_token_generator.check_token(self.user, token))
 
     def test_password_reset_does_not_reveal_unknown_email(self):
-        with patch('users.views.send_password_reset_email.delay') as delay:
+        with patch('users.services.send_password_reset_email.delay') as delay:
             response = self.client.post(
                 reverse('password-reset'),
                 {'email': 'missing@example.com'},
