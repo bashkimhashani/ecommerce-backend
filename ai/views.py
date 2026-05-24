@@ -1,12 +1,12 @@
 import uuid
 
 from django.conf import settings
-from django.core.cache import cache
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .history import ChatHistoryStore
 from .serializers import ChatMessageSerializer
 from .services import ChatService, ProductContextRetriever
 from .throttles import ChatRateThrottle
@@ -14,7 +14,9 @@ from .throttles import ChatRateThrottle
 
 class ChatMessageView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
     throttle_classes = [ChatRateThrottle]
+    history_store_class = ChatHistoryStore
 
     def post(self, request):
         serializer = ChatMessageSerializer(data=request.data)
@@ -26,7 +28,8 @@ class ChatMessageView(APIView):
             or uuid.uuid4().hex
         )
         tenant = getattr(request, 'tenant', None)
-        history = self.get_history(session_id)
+        history_store = self.history_store_class()
+        history = history_store.get_history(session_id)
         products = ProductContextRetriever().get_relevant_products(
             user_message,
             tenant=tenant,
@@ -47,13 +50,11 @@ class ChatMessageView(APIView):
             used_fallback = True
             assistant_message = self.build_fallback_answer(products)
 
-        self.save_history(
-            session_id,
-            [
-                *history,
-                {'role': 'user', 'content': user_message},
-                {'role': 'assistant', 'content': assistant_message},
-            ],
+        history_store.append_turn(
+            session_id=session_id,
+            tenant=tenant,
+            user_message=user_message,
+            assistant_message=assistant_message,
         )
         return Response(
             {
@@ -64,15 +65,6 @@ class ChatMessageView(APIView):
             },
             status=status.HTTP_200_OK,
         )
-
-    def get_history(self, session_id):
-        return cache.get(self.history_key(session_id), [])
-
-    def save_history(self, session_id, history):
-        cache.set(self.history_key(session_id), history[-20:], timeout=86400)
-
-    def history_key(self, session_id):
-        return f'chat:{session_id}:history'
 
     def build_system_prompt(self, products):
         return (
@@ -109,4 +101,19 @@ class ChatMessageView(APIView):
             'Here are a few catalog matches I can recommend: '
             f"{'; '.join(product_lines)}. "
             'Tell me your budget or preferred specs and I can narrow it down.'
+        )
+
+
+class ChatHistoryView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    history_store_class = ChatHistoryStore
+
+    def get(self, request, session_id):
+        return Response(
+            {
+                'session_id': session_id,
+                'messages': self.history_store_class().get_history(session_id),
+            },
+            status=status.HTTP_200_OK,
         )

@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from django_redis import get_redis_connection
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -16,7 +17,8 @@ from orders.models import Order, OrderItem
 from tenants.models import Tenant
 from users.models import User
 
-from .models import AIReport
+from .history import ChatHistoryStore
+from .models import AIReport, Conversation, ConversationMessage
 from .services import (
     AnalyticsQueryResolver,
     AnalyticsQueryValidationError,
@@ -218,6 +220,21 @@ class AIReportTests(TestCase):
         self.assertTrue(response.data['session_id'])
 
     @patch.object(ChatService, 'complete')
+    def test_chat_endpoint_ignores_invalid_optional_token(self, complete):
+        complete.return_value = 'I can still help with shopping.'
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION='Bearer not-a-real-token')
+
+        response = client.post(
+            '/api/v1/chat/message/',
+            {'message': 'APPLE'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['message'], 'I can still help with shopping.')
+
+    @patch.object(ChatService, 'complete')
     def test_chat_endpoint_injects_context_history_and_user_message(
         self,
         complete,
@@ -330,6 +347,86 @@ class AIReportTests(TestCase):
         )
 
         self.assertEqual(products, [])
+
+    @patch.object(ChatService, 'complete')
+    def test_conversation_history_is_stored_in_redis_with_ttl_and_cap(
+        self,
+        complete,
+    ):
+        complete.return_value = 'Stored answer.'
+        session_id = 'redis-history-session'
+        store = ChatHistoryStore()
+        redis = get_redis_connection('default')
+        redis.delete(store.history_key(session_id))
+        client = APIClient()
+
+        for index in range(11):
+            response = client.post(
+                '/api/v1/chat/message/',
+                {
+                    'message': f'history message {index}',
+                    'session_id': session_id,
+                },
+                format='json',
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(redis.llen(store.history_key(session_id)), 20)
+        self.assertGreater(redis.ttl(store.history_key(session_id)), 0)
+
+        history_response = client.get(
+            f'/api/v1/chat/history/{session_id}/',
+            format='json',
+        )
+
+        self.assertEqual(history_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(history_response.data['messages']), 20)
+        self.assertEqual(
+            history_response.data['messages'][-1],
+            {'role': 'assistant', 'content': 'Stored answer.'},
+        )
+
+    def test_chat_history_endpoint_falls_back_to_database(self):
+        session_id = 'db-history-session'
+        store = ChatHistoryStore()
+        get_redis_connection('default').delete(store.history_key(session_id))
+        conversation = Conversation.all_objects.create(
+            tenant=self.tenant,
+            session_id=session_id,
+        )
+        ConversationMessage.all_objects.create(
+            tenant=self.tenant,
+            conversation=conversation,
+            role=ConversationMessage.Role.USER,
+            content='What laptop should I buy?',
+        )
+        ConversationMessage.all_objects.create(
+            tenant=self.tenant,
+            conversation=conversation,
+            role=ConversationMessage.Role.ASSISTANT,
+            content='Acer Swift Go 14 is a strong option.',
+        )
+        client = APIClient()
+
+        response = client.get(f'/api/v1/chat/history/{session_id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data,
+            {
+                'session_id': session_id,
+                'messages': [
+                    {
+                        'role': ConversationMessage.Role.USER,
+                        'content': 'What laptop should I buy?',
+                    },
+                    {
+                        'role': ConversationMessage.Role.ASSISTANT,
+                        'content': 'Acer Swift Go 14 is a strong option.',
+                    },
+                ],
+            },
+        )
 
     @patch('vendor.views.AnalyticsQueryResolver')
     def test_vendor_analytics_endpoint_requires_vendor_admin_role(
