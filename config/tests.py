@@ -17,12 +17,15 @@ class SwaggerDocumentationTests(TestCase):
     minimum_documented_endpoint_count = 20
     documented_methods = {'delete', 'get', 'patch', 'post', 'put'}
 
-    def test_swagger_ui_is_accessible(self):
-        response = self.client.get('/api/docs/')
+    def test_swagger_ui_and_redoc_are_accessible(self):
+        docs_response = self.client.get('/api/docs/')
+        redoc_response = self.client.get('/api/redoc/')
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'SwaggerUIBundle')
-        self.assertContains(response, 'Ecommerce API')
+        self.assertEqual(docs_response.status_code, 200)
+        self.assertEqual(redoc_response.status_code, 200)
+        self.assertContains(docs_response, 'SwaggerUIBundle')
+        self.assertContains(docs_response, 'Ecommerce API')
+        self.assertContains(redoc_response, '<redoc')
 
     def test_openapi_schema_documents_minimum_required_endpoints(self):
         response = self.client.get('/api/schema/')
