@@ -833,12 +833,8 @@ class PasswordResetTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         delay.assert_called_once()
-        user_id, uid, token = delay.call_args.args
+        user_id, token = delay.call_args.args
         self.assertEqual(user_id, self.user.id)
-        self.assertEqual(
-            uid,
-            urlsafe_base64_encode(force_bytes(self.user.pk)),
-        )
         self.assertTrue(default_token_generator.check_token(self.user, token))
 
     def test_password_reset_does_not_reveal_unknown_email(self):
