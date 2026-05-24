@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from unittest.mock import Mock, patch
 
+from ai.models import AIReport
 from catalog.models import Brand, Category, Product, ProductVariant
 from inventory.models import Inventory
 from tenants.models import Tenant
@@ -269,6 +270,57 @@ class VendorInventoryEndpointTests(TestCase):
             response.status_code,
             status.HTTP_400_BAD_REQUEST,
         )
+
+    def test_latest_report_returns_tenant_scoped_newest_report(self):
+        old_report = AIReport.all_objects.create(
+            tenant=self.tenant,
+            report_type=AIReport.ReportType.NIGHTLY_SALES,
+            content='Old report',
+            prompt_tokens=1,
+            completion_tokens=2,
+        )
+        latest_report = AIReport.all_objects.create(
+            tenant=self.tenant,
+            report_type=AIReport.ReportType.NIGHTLY_SALES,
+            content='Latest report',
+            prompt_tokens=10,
+            completion_tokens=20,
+        )
+        other_report = AIReport.all_objects.create(
+            tenant=self.other_tenant,
+            report_type=AIReport.ReportType.NIGHTLY_SALES,
+            content='Other tenant report',
+            prompt_tokens=100,
+            completion_tokens=200,
+        )
+
+        response = self.client.get('/api/v1/vendor/reports/latest/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], latest_report.id)
+        self.assertEqual(response.data['content'], 'Latest report')
+        self.assertNotEqual(response.data['id'], old_report.id)
+        self.assertNotEqual(response.data['id'], other_report.id)
+
+    def test_latest_report_returns_no_content_when_missing(self):
+        response = self.client.get('/api/v1/vendor/reports/latest/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_latest_report_requires_vendor_admin(self):
+        customer = User.objects.create_user(
+            email='report-customer@test.com',
+            password='testpass123',
+            first_name='Report',
+            last_name='Customer',
+            role='customer',
+            tenant=self.tenant,
+        )
+        self.client.force_authenticate(user=customer)
+
+        response = self.client.get('/api/v1/vendor/reports/latest/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class FakeField:

@@ -1,6 +1,20 @@
 from rest_framework import serializers
 
+from ai.models import AIReport
 from .models import VendorProfile
+
+
+class AIReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AIReport
+        fields = [
+            'id',
+            'report_type',
+            'content',
+            'generated_at',
+            'prompt_tokens',
+            'completion_tokens',
+        ]
 
 
 class VendorAnalyticsAskSerializer(serializers.Serializer):
