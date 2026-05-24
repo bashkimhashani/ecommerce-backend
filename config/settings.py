@@ -33,6 +33,17 @@ env = environ.Env(
     OPENAI_API_KEY=(str, ''),
     OPENAI_BASE_URL=(str, ''),
     OPENAI_MODEL=(str, 'gpt-4o-mini'),
+    OPENAI_CHAT_SYSTEM_PROMPT=(
+        str,
+        (
+            'You are Vendora Assistant, a friendly helper bot for this tech '
+            'ecommerce site. Help visitors browse products, compare tech '
+            'items, understand prices and specs, and guide them toward login, '
+            'registration, cart, checkout, and vendor features when relevant. '
+            'Use the provided catalog context for product-specific answers and '
+            'be clear when you do not know something.'
+        ),
+    ),
     AWS_STORAGE_BUCKET_NAME=(str, ''),
     AWS_S3_REGION_NAME=(str, ''),
     AWS_ACCESS_KEY_ID=(str, ''),
@@ -211,6 +222,7 @@ SENDGRID_ECHO_TO_STDOUT = env('SENDGRID_ECHO_TO_STDOUT')
 OPENAI_API_KEY = env('OPENAI_API_KEY')
 OPENAI_BASE_URL = env('OPENAI_BASE_URL')
 OPENAI_MODEL = env('OPENAI_MODEL')
+OPENAI_CHAT_SYSTEM_PROMPT = env('OPENAI_CHAT_SYSTEM_PROMPT')
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
