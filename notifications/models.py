@@ -25,12 +25,18 @@ class EmailLog(TenantModel):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['tenant', 'status']),
-            models.Index(fields=['task_name', 'status']),
+            models.Index(
+                fields=['tenant', 'status'],
+                name='notificatio_tenant__16ab8d_idx',
+            ),
+            models.Index(
+                fields=['task_name', 'status'],
+                name='notificatio_task_na_4d5b17_idx',
+            ),
         ]
 
     def __str__(self):
-        return f'{self.task_name} - {self.status}'
+        return f'{self.task_name} -> {self.recipient} ({self.status})'
 
 
 class FailedTask(TenantModel):
@@ -43,9 +49,15 @@ class FailedTask(TenantModel):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['task_name']),
-            models.Index(fields=['tenant', 'task_name']),
+            models.Index(
+                fields=['task_name'],
+                name='notificatio_task_na_b4caca_idx',
+            ),
+            models.Index(
+                fields=['tenant', 'task_name'],
+                name='notificatio_tenant__6d4647_idx',
+            ),
         ]
 
     def __str__(self):
-        return f'{self.task_name} failed at {self.created_at:%Y-%m-%d %H:%M:%S}'
+        return f'{self.task_name} failed at {self.created_at}'
