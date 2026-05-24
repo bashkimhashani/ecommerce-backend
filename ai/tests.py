@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -20,6 +21,7 @@ from .services import (
     AnalyticsQueryResolver,
     AnalyticsQueryValidationError,
     ChatService,
+    ProductContextRetriever,
     SalesAggregator,
 )
 from .tasks import generate_nightly_report
@@ -215,6 +217,50 @@ class AIReportTests(TestCase):
         self.assertFalse(response.data['used_fallback'])
         self.assertTrue(response.data['session_id'])
 
+    @patch.object(ChatService, 'complete')
+    def test_chat_endpoint_injects_context_history_and_user_message(
+        self,
+        complete,
+    ):
+        self._create_variant(self.tenant, 'Context Unique Laptop', 'CTX-UNIQUE-LAP')
+        complete.return_value = 'Laptop Pro is a good fit.'
+        client = APIClient()
+
+        first_response = client.post(
+            '/api/v1/chat/message/',
+            {
+                'message': 'recommend CTX-UNIQUE-LAP',
+                'session_id': 'context-session',
+            },
+            format='json',
+        )
+        second_response = client.post(
+            '/api/v1/chat/message/',
+            {
+                'message': 'what about the ram?',
+                'session_id': first_response.data['session_id'],
+            },
+            format='json',
+        )
+
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        first_call, second_call = complete.call_args_list
+        first_call_kwargs = first_call.kwargs
+        call_kwargs = second_call.kwargs
+        self.assertIn('Catalog context:', first_call_kwargs['system_prompt'])
+        self.assertIn(
+            'Context Unique Laptop',
+            first_call_kwargs['system_prompt'],
+        )
+        self.assertEqual(
+            call_kwargs['messages'],
+            [
+                {'role': 'user', 'content': 'recommend CTX-UNIQUE-LAP'},
+                {'role': 'assistant', 'content': 'Laptop Pro is a good fit.'},
+                {'role': 'user', 'content': 'what about the ram?'},
+            ],
+        )
+
     @patch.object(ChatService, 'complete', side_effect=RuntimeError('api down'))
     def test_chat_endpoint_returns_catalog_fallback_on_ai_error(self, complete):
         self._create_variant(self.tenant, 'Laptop Pro', 'LAPTOP-FALLBACK')
@@ -230,6 +276,60 @@ class AIReportTests(TestCase):
         self.assertTrue(response.data['used_fallback'])
         self.assertIn('catalog matches', response.data['message'])
         self.assertGreater(len(response.data['products']), 0)
+
+    @patch.object(ChatService, 'complete')
+    def test_chat_endpoint_rate_limits_to_20_requests_per_minute(self, complete):
+        cache.clear()
+        complete.return_value = 'Sure.'
+        client = APIClient(REMOTE_ADDR='203.0.113.44')
+
+        for index in range(20):
+            response = client.post(
+                '/api/v1/chat/message/',
+                {'message': f'question {index}', 'session_id': 'rate-test'},
+                format='json',
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        limited_response = client.post(
+            '/api/v1/chat/message/',
+            {'message': 'one too many', 'session_id': 'rate-test'},
+            format='json',
+        )
+
+        self.assertEqual(
+            limited_response.status_code,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    def test_product_context_retriever_matches_top_five_by_keyword(self):
+        for index in range(6):
+            self._create_variant(
+                self.tenant,
+                f'Laptop Match {index}',
+                f'LAPTOP-MATCH-{index}',
+            )
+        self._create_variant(self.tenant, 'Phone Only', 'PHONE-ONLY')
+
+        products = ProductContextRetriever().get_relevant_products(
+            'recommend laptop',
+            tenant=self.tenant,
+        )
+
+        self.assertEqual(len(products), 5)
+        self.assertTrue(
+            all('Laptop' in product['name'] for product in products),
+        )
+        self.assertIn('slug', products[0])
+        self.assertIn('thumbnail', products[0])
+
+    def test_product_context_retriever_returns_empty_for_non_matching_query(self):
+        products = ProductContextRetriever().get_relevant_products(
+            'zzzznothingmatches',
+            tenant=self.tenant,
+        )
+
+        self.assertEqual(products, [])
 
     @patch('vendor.views.AnalyticsQueryResolver')
     def test_vendor_analytics_endpoint_requires_vendor_admin_role(
