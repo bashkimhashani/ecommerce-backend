@@ -209,7 +209,7 @@ class VendorInventoryEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    @patch('vendor.views.vendor_order_summary_rows')
+    @patch('vendor.services.vendor_order_summary_rows')
     def test_order_summary_endpoint_returns_grouped_status_counts(
         self,
         mock_summary,
