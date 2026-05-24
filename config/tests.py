@@ -12,6 +12,17 @@ from request_logs.models import RequestLog
 from .middleware import RequestLoggingMiddleware
 
 
+class DocumentationViewTests(TestCase):
+    def test_swagger_and_redoc_documentation_views_are_configured(self):
+        docs_response = self.client.get('/api/docs/')
+        redoc_response = self.client.get('/api/redoc/')
+
+        self.assertEqual(docs_response.status_code, 200)
+        self.assertEqual(redoc_response.status_code, 200)
+        self.assertContains(docs_response, 'SwaggerUIBundle')
+        self.assertContains(redoc_response, '<redoc')
+
+
 class CeleryRoutingSettingsTests(SimpleTestCase):
     def test_declares_default_email_and_ai_queues(self):
         queues = {queue.name: queue for queue in settings.CELERY_TASK_QUEUES}
