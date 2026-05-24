@@ -22,7 +22,9 @@ class ProductContextRetriever:
         if tenant:
             products = products.filter(tenant=tenant)
 
-        candidates = products.select_related('brand', 'category')[:100]
+        candidates = products.select_related('brand', 'category').prefetch_related(
+            'images',
+        )[:100]
         scored_products = []
         for product in candidates:
             searchable_text = ' '.join(
@@ -39,11 +41,11 @@ class ProductContextRetriever:
             if score:
                 scored_products.append((score, product))
 
-        if not scored_products and keywords:
-            scored_products = [(0, product) for product in candidates[:limit]]
-
         scored_products.sort(key=lambda item: (-item[0], item[1].name))
-        return [self.serialize_product(product) for _, product in scored_products[:limit]]
+        return [
+            self.serialize_product(product)
+            for _, product in scored_products[:limit]
+        ]
 
     def extract_keywords(self, query):
         ignored_words = {
@@ -73,13 +75,34 @@ class ProductContextRetriever:
         return {
             'id': product.id,
             'name': product.name,
+            'slug': product.slug,
             'sku': product.sku,
             'brand': product.brand.name,
             'category': product.category.name,
             'price': str(product.base_price),
+            'thumbnail': self.get_thumbnail(product),
             'description': product.description,
             'tech_specs': product.tech_specs,
         }
+
+    def get_thumbnail(self, product):
+        primary_image = next(
+            (image for image in product.images.all() if image.is_primary),
+            None,
+        )
+        if primary_image is None:
+            primary_image = next(iter(product.images.all()), None)
+        if primary_image is None:
+            return ''
+
+        image_field = (
+            primary_image.thumbnail
+            or primary_image.medium
+            or primary_image.image
+        )
+        if not image_field:
+            return ''
+        return image_field.url
 
 
 class ChatService:
