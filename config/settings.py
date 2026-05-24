@@ -3,6 +3,7 @@ from datetime import timedelta
 
 import environ
 import stripe
+from celery.schedules import crontab
 from kombu import Exchange, Queue
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -30,6 +31,8 @@ env = environ.Env(
     SENDGRID_SANDBOX_MODE_IN_DEBUG=(bool, True),
     SENDGRID_ECHO_TO_STDOUT=(bool, False),
     OPENAI_API_KEY=(str, ''),
+    OPENAI_BASE_URL=(str, ''),
+    OPENAI_MODEL=(str, 'gpt-4o-mini'),
     AWS_STORAGE_BUCKET_NAME=(str, ''),
     AWS_S3_REGION_NAME=(str, ''),
     AWS_ACCESS_KEY_ID=(str, ''),
@@ -206,6 +209,8 @@ SENDGRID_SANDBOX_MODE_IN_DEBUG = env('SENDGRID_SANDBOX_MODE_IN_DEBUG')
 SENDGRID_ECHO_TO_STDOUT = env('SENDGRID_ECHO_TO_STDOUT')
 
 OPENAI_API_KEY = env('OPENAI_API_KEY')
+OPENAI_BASE_URL = env('OPENAI_BASE_URL')
+OPENAI_MODEL = env('OPENAI_MODEL')
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -293,6 +298,14 @@ CELERY_TASK_ROUTES = {
     'ai.tasks.*': {
         'queue': 'ai',
         'routing_key': 'ai',
+    },
+}
+CELERY_BEAT_SCHEDULE = {
+    'generate-nightly-ai-sales-reports': {
+        'task': 'ai.tasks.generate_nightly_report',
+        'schedule': crontab(hour=2, minute=0),
+        'options': {'queue': 'ai', 'routing_key': 'ai'},
+        'kwargs': {},
     },
 }
 CELERY_TASK_ANNOTATIONS = {
