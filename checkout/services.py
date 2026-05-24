@@ -5,6 +5,7 @@ from django.db import transaction
 import stripe
 
 from cart.models import Cart, CartItem
+from notifications.tasks import send_order_confirmation
 from orders.models import Order, OrderItem
 
 from .models import CheckoutSession
@@ -131,6 +132,9 @@ class OrderCreationService:
         checkout_session.save(update_fields=['status', 'updated_at'])
 
         cls._clear_cart(cart)
+        transaction.on_commit(
+            lambda: send_order_confirmation.delay(order.pk),
+        )
         return order
 
     @staticmethod

@@ -27,7 +27,8 @@ from .serializers import (
     UserProfileUpdateSerializer,
     UserSerializer,
 )
-from .tasks import send_email_verification_email, send_password_reset_email
+from .tasks import send_email_verification_email
+from notifications.tasks import send_password_reset_email
 from .token_blacklist import blacklist_token_in_redis
 from .tokens import email_verification_token_generator
 
@@ -154,9 +155,8 @@ class PasswordResetView(APIView):
             )
             user = User.objects.filter(email=email, is_active=True).first()
             if user:
-                uid = urlsafe_base64_encode(force_bytes(user.pk))
                 token = default_token_generator.make_token(user)
-                send_password_reset_email.delay(user.id, uid, token)
+                send_password_reset_email.delay(user.id, token)
             return Response(
                 {
                     'message': (
