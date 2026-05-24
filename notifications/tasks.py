@@ -16,7 +16,7 @@ ORDER_SHIPPED_TASK = 'notifications.tasks.send_order_shipped'
 PASSWORD_RESET_TASK = 'notifications.tasks.send_password_reset_email'
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_order_confirmation(order_id):
     from orders.models import Order
 
@@ -72,7 +72,7 @@ def send_order_confirmation(order_id):
     }
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_order_shipped(order_id):
     from orders.models import Order
 
@@ -131,7 +131,7 @@ def send_order_shipped(order_id):
     }
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_password_reset_email(user_id, token):
     User = get_user_model()
     user = User.objects.get(pk=user_id)

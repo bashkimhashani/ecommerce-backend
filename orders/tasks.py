@@ -3,7 +3,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_order_status_email(order_id, status):
     from .models import Order
 

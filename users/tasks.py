@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_email_verification_email(user_id, uid, token):
     User = get_user_model()
     user = User.objects.get(pk=user_id)
@@ -23,7 +23,7 @@ def send_email_verification_email(user_id, uid, token):
     )
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_password_reset_email(user_id, uid, token):
     User = get_user_model()
     user = User.objects.get(pk=user_id)

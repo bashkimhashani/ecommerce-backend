@@ -1,6 +1,16 @@
+import json
+
 from celery.signals import task_failure
 
 from .models import FailedTask
+
+
+def serialize_task_arguments(args=None, kwargs=None):
+    payload = {
+        'args': list(args or []),
+        'kwargs': dict(kwargs or {}),
+    }
+    return json.loads(json.dumps(payload, default=str))
 
 
 @task_failure.connect
@@ -22,10 +32,7 @@ def log_exhausted_task(
 
     FailedTask.all_objects.create(
         task_name=getattr(sender, 'name', str(sender)),
-        arguments={
-            'args': list(args or []),
-            'kwargs': dict(kwargs or {}),
-        },
+        arguments=serialize_task_arguments(args, kwargs),
         exception=str(exception),
         traceback=str(einfo or traceback or ''),
     )

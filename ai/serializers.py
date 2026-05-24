@@ -15,3 +15,8 @@ class ChatResponseSerializer(serializers.Serializer):
     message = serializers.CharField()
     used_fallback = serializers.BooleanField()
     products = serializers.ListField(child=serializers.DictField())
+
+
+class ChatHistoryResponseSerializer(serializers.Serializer):
+    session_id = serializers.CharField()
+    messages = serializers.ListField(child=serializers.DictField())
