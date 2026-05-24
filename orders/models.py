@@ -8,6 +8,7 @@ from django_fsm.signals import post_transition
 
 from tenants.mixins import TenantModel
 
+from notifications.tasks import send_order_shipped
 from .tasks import send_order_status_email
 
 
@@ -193,3 +194,7 @@ def create_order_event(sender, instance, name, source, target, **kwargs):
     transaction.on_commit(
         lambda: send_order_status_email.delay(instance.pk, target),
     )
+    if target == Order.Status.SHIPPED:
+        transaction.on_commit(
+            lambda: send_order_shipped.delay(instance.pk),
+        )

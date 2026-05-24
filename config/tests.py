@@ -2,6 +2,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import yaml
 from django.conf import settings
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, TestCase
@@ -10,6 +11,38 @@ from config.celery import app as celery_app
 from request_logs.models import RequestLog
 
 from .middleware import RequestLoggingMiddleware
+
+
+class SwaggerDocumentationTests(TestCase):
+    minimum_documented_endpoint_count = 20
+    documented_methods = {'delete', 'get', 'patch', 'post', 'put'}
+
+    def test_swagger_ui_and_redoc_are_accessible(self):
+        docs_response = self.client.get('/api/docs/')
+        redoc_response = self.client.get('/api/redoc/')
+
+        self.assertEqual(docs_response.status_code, 200)
+        self.assertEqual(redoc_response.status_code, 200)
+        self.assertContains(docs_response, 'SwaggerUIBundle')
+        self.assertContains(docs_response, 'Ecommerce API')
+        self.assertContains(redoc_response, '<redoc')
+
+    def test_openapi_schema_documents_minimum_required_endpoints(self):
+        response = self.client.get('/api/schema/')
+
+        self.assertEqual(response.status_code, 200)
+        schema = yaml.safe_load(response.content)
+        documented_endpoint_count = sum(
+            1
+            for path_item in schema.get('paths', {}).values()
+            for method in path_item
+            if method.lower() in self.documented_methods
+        )
+
+        self.assertGreaterEqual(
+            documented_endpoint_count,
+            self.minimum_documented_endpoint_count,
+        )
 
 
 class CeleryRoutingSettingsTests(SimpleTestCase):
