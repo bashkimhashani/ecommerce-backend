@@ -205,9 +205,8 @@ class AnalyticsQueryResolver:
                 'Could not resolve the question into a safe analytics query.',
             )
 
-        arguments = tool_calls[0].function.arguments
         try:
-            query = json.loads(arguments)
+            query = json.loads(tool_calls[0].function.arguments)
         except json.JSONDecodeError as exc:
             raise AnalyticsQueryValidationError(
                 'Analytics query arguments were not valid JSON.',

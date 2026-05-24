@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 
+from ai.models import AIReport
 from ai.services import AnalyticsQueryResolver, AnalyticsQueryValidationError
 from inventory.models import Inventory
 from inventory.serializers import InventorySerializer
@@ -16,6 +17,7 @@ from .order_reports import (
     vendor_order_totals,
 )
 from .serializers import (
+    AIReportSerializer,
     OrderSummarySerializer,
     VendorAnalyticsAskSerializer,
     VendorAnalyticsResponseSerializer,
@@ -72,11 +74,32 @@ class VendorDashboardSummaryView(APIView):
         })
 
 
+class VendorLatestReportView(APIView):
+    permission_classes = [IsVendorAdmin]
+
+    @extend_schema(
+        tags=['Vendor AI Insights'],
+        responses={
+            200: AIReportSerializer,
+            204: OpenApiResponse(description='No report exists for tenant.'),
+        },
+    )
+    def get(self, request):
+        report = AIReport.all_objects.filter(
+            tenant=request.user.tenant,
+            report_type=AIReport.ReportType.NIGHTLY_SALES,
+        ).order_by('-generated_at').first()
+        if report is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        serializer = AIReportSerializer(report)
+        return Response(serializer.data)
+
+
 class VendorAnalyticsAskView(APIView):
     permission_classes = [IsVendorAdmin]
 
     @extend_schema(
-        tags=['Vendor Analytics'],
+        tags=['Vendor AI Insights'],
         request=VendorAnalyticsAskSerializer,
         responses={
             200: VendorAnalyticsResponseSerializer,
@@ -86,7 +109,6 @@ class VendorAnalyticsAskView(APIView):
     def post(self, request):
         serializer = VendorAnalyticsAskSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         try:
             result = AnalyticsQueryResolver().resolve(
                 tenant=request.user.tenant,
@@ -97,7 +119,6 @@ class VendorAnalyticsAskView(APIView):
                 {'detail': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         response_serializer = VendorAnalyticsResponseSerializer(result)
         return Response(response_serializer.data)
 

@@ -5,11 +5,17 @@ from .views import (
     VendorDashboardSummaryView,
     VendorInventoryDetailView,
     VendorInventoryListView,
+    VendorLatestReportView,
     VendorOrderSummaryView,
     VendorOrdersExportView,
 )
 
 urlpatterns = [
+    path(
+        'reports/latest/',
+        VendorLatestReportView.as_view(),
+        name='vendor-report-latest',
+    ),
     path(
         'analytics/ask/',
         VendorAnalyticsAskView.as_view(),
