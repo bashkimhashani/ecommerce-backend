@@ -538,7 +538,7 @@ class Command(BaseCommand):
             users = self.seed_users(tenant)
             vendors = self.seed_vendor_profiles(tenant, users)
             products = self.seed_catalog(tenant, vendors)
-            self.seed_product_images(tenant, products)
+            self.seed_product_images(tenant)
             variants = self.seed_variants(tenant, products)
             self.seed_inventory(tenant, variants)
             cart = self.seed_cart(tenant, users['customer'], variants)
@@ -683,9 +683,9 @@ class Command(BaseCommand):
             products[product_data['sku']] = product
         return products
 
-    def seed_product_images(self, tenant, products):
-        for product_data in PRODUCTS:
-            product = products[product_data['sku']]
+    def seed_product_images(self, tenant):
+        products = Product.all_objects.filter(tenant=tenant)
+        for product in products:
             image_path = SEED_IMAGE_DIR / f'real-{product.slug}.jpg'
             if not image_path.exists():
                 continue
