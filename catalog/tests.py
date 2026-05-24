@@ -14,6 +14,7 @@ from rest_framework.test import APITestCase
 from django_redis import get_redis_connection
 
 from tenants.models import Tenant
+from vendor.models import VendorProfile
 
 from .filters import ProductFilter
 from .models import Brand, Category, Product, ProductImage, ProductVariant
@@ -64,6 +65,7 @@ class ProductListSerializerTests(APITestCase):
                 'name',
                 'slug',
                 'price',
+                'vendor',
                 'thumbnail',
                 'avg_rating',
             },
@@ -71,8 +73,44 @@ class ProductListSerializerTests(APITestCase):
         self.assertEqual(serializer.data['name'], 'MacBook Air')
         self.assertEqual(serializer.data['slug'], 'macbook-air')
         self.assertEqual(serializer.data['price'], '999.00')
+        self.assertIsNone(serializer.data['vendor'])
         self.assertIsNone(serializer.data['thumbnail'])
         self.assertIsNone(serializer.data['avg_rating'])
+
+    def test_product_list_serializer_returns_vendor_summary(self):
+        vendor_user = User.objects.create_user(
+            email='serializer-vendor@example.com',
+            password='StrongPass123',
+            first_name='Serializer',
+            last_name='Vendor',
+            role='vendor_admin',
+            tenant=self.tenant,
+        )
+        vendor = VendorProfile.objects.create(
+            user=vendor_user,
+            tenant=self.tenant,
+            store_name='Serializer Tech',
+            contact_email=vendor_user.email,
+            logo='https://example.com/logo.png',
+            rating=4.6,
+        )
+        self.product.vendor = vendor
+        self.product.save(update_fields=['vendor'])
+
+        product = Product.all_objects.select_related('vendor').get(
+            id=self.product.id,
+        )
+        serializer = ProductListSerializer(product)
+
+        self.assertEqual(
+            serializer.data['vendor'],
+            {
+                'id': vendor.id,
+                'store_name': 'Serializer Tech',
+                'logo': 'https://example.com/logo.png',
+                'rating': 4.6,
+            },
+        )
 
     def test_product_list_serializer_uses_primary_thumbnail(self):
         ProductImage.all_objects.create(
@@ -783,6 +821,7 @@ class ProductListEndpointTests(APITestCase):
                 'name',
                 'slug',
                 'price',
+                'vendor',
                 'thumbnail',
                 'avg_rating',
             },
@@ -1046,6 +1085,7 @@ class ProductSearchEndpointTests(APITestCase):
                 'name',
                 'slug',
                 'price',
+                'vendor',
                 'thumbnail',
                 'avg_rating',
             },
@@ -1254,6 +1294,12 @@ class ProductCreateEndpointTests(APITestCase):
             role='customer',
             tenant=self.tenant,
         )
+        self.vendor_profile = VendorProfile.objects.create(
+            user=self.vendor,
+            tenant=self.tenant,
+            store_name='Create Vendor Store',
+            contact_email=self.vendor.email,
+        )
         self.brand = Brand.all_objects.create(
             tenant=self.tenant,
             name='Apple',
@@ -1298,11 +1344,16 @@ class ProductCreateEndpointTests(APITestCase):
         self.assertEqual(product.tenant, self.tenant)
         self.assertEqual(product.brand, self.brand)
         self.assertEqual(product.category, self.category)
+        self.assertEqual(product.vendor, self.vendor_profile)
         self.assertEqual(product.sku, 'MBA15-CREATE-001')
         self.assertEqual(product.tech_specs['ram'], '16GB')
         self.assertEqual(response.data['slug'], product.slug)
         self.assertEqual(response.data['brand']['id'], self.brand.id)
         self.assertEqual(response.data['category']['id'], self.category.id)
+        self.assertEqual(
+            response.data['vendor']['store_name'],
+            'Create Vendor Store',
+        )
         self.assertEqual(response.data['specs']['storage'], '512GB SSD')
 
     def test_non_vendor_cannot_create_product(self):
@@ -1888,6 +1939,7 @@ class ProductDetailEndpointTests(APITestCase):
                 'sku',
                 'brand',
                 'category',
+                'vendor',
                 'status',
                 'price',
                 'specs',

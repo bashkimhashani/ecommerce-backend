@@ -23,9 +23,9 @@ class CategoryAdmin(DraggableMPTTAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'sku', 'brand', 'category', 'status', 'base_price', 'tenant')
-    search_fields = ('name', 'slug', 'sku', 'brand__name', 'category__name')
-    list_filter = ('status', 'brand', 'category', 'tenant')
+    list_display = ('name', 'sku', 'brand', 'category', 'vendor', 'status', 'base_price', 'tenant')
+    search_fields = ('name', 'slug', 'sku', 'brand__name', 'category__name', 'vendor__store_name')
+    list_filter = ('status', 'brand', 'category', 'vendor', 'tenant')
     prepopulated_fields = {'slug': ('name',)}
 
 

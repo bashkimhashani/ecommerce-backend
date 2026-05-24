@@ -92,6 +92,13 @@ class Product(TenantModel):
         on_delete=models.PROTECT,
         related_name='products',
     )
+    vendor = models.ForeignKey(
+        'vendor.VendorProfile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='products',
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -109,6 +116,7 @@ class Product(TenantModel):
             models.Index(fields=['tenant', 'status']),
             models.Index(fields=['tenant', 'category']),
             models.Index(fields=['tenant', 'brand']),
+            models.Index(fields=['tenant', 'vendor']),
         ]
         constraints = [
             models.UniqueConstraint(

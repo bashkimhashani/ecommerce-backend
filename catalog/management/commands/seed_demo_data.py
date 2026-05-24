@@ -24,6 +24,42 @@ TENANT_DATA = {
 
 DEMO_PASSWORD = 'DemoPass123!'
 
+DEMO_VENDORS = [
+    {
+        'key': 'vendor',
+        'email': 'vendor@example.com',
+        'first_name': 'Demo',
+        'last_name': 'Vendor',
+        'store_name': 'Demo Tech Vendor',
+        'store_description': 'Local demo vendor for electronics.',
+        'contact_phone': '+15550101010',
+        'rating': Decimal('4.8'),
+        'total_sales': Decimal('3499.97'),
+    },
+    {
+        'key': 'gaming_vendor',
+        'email': 'gaming.vendor@example.com',
+        'first_name': 'Gaming',
+        'last_name': 'Vendor',
+        'store_name': 'PixelForge Gaming',
+        'store_description': 'Gaming PCs, accessories, and console gear.',
+        'contact_phone': '+15550101011',
+        'rating': Decimal('4.6'),
+        'total_sales': Decimal('2240.00'),
+    },
+    {
+        'key': 'office_vendor',
+        'email': 'office.vendor@example.com',
+        'first_name': 'Office',
+        'last_name': 'Vendor',
+        'store_name': 'Northstar Office Tech',
+        'store_description': 'Work laptops, monitors, printers, and networking.',
+        'contact_phone': '+15550101012',
+        'rating': Decimal('4.7'),
+        'total_sales': Decimal('4180.50'),
+    },
+]
+
 BRANDS = [
     {'name': 'Apple', 'slug': 'apple', 'country_of_origin': 'United States'},
     {'name': 'Samsung', 'slug': 'samsung', 'country_of_origin': 'South Korea'},
@@ -494,10 +530,10 @@ class Command(BaseCommand):
         with transaction.atomic():
             tenant = self.seed_tenant()
             users = self.seed_users(tenant)
-            self.seed_vendor_profile(tenant, users['vendor'])
-            products = self.seed_catalog(tenant)
+            vendors = self.seed_vendor_profiles(tenant, users)
+            products = self.seed_catalog(tenant, vendors)
             variants = self.seed_variants(tenant, products)
-            vendor = self.seed_inventory(tenant, users['vendor'], variants)
+            self.seed_inventory(tenant, variants)
             cart = self.seed_cart(tenant, users['customer'], variants)
             self.seed_order(tenant, users['customer'], cart, variants)
             tenant.owner = users['admin']
@@ -505,7 +541,9 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             'Demo database is ready. '
-            f'Users: admin@example.com, vendor@example.com, customer@example.com. '
+            'Users: admin@example.com, vendor@example.com, '
+            'gaming.vendor@example.com, office.vendor@example.com, '
+            'customer@example.com. '
             f'Password for all demo users: {DEMO_PASSWORD}'
         ))
 
@@ -527,14 +565,6 @@ class Command(BaseCommand):
                 'is_staff': True,
                 'is_superuser': True,
             },
-            'vendor': {
-                'email': 'vendor@example.com',
-                'first_name': 'Demo',
-                'last_name': 'Vendor',
-                'role': 'vendor_admin',
-                'is_staff': True,
-                'is_superuser': False,
-            },
             'customer': {
                 'email': 'customer@example.com',
                 'first_name': 'Demo',
@@ -544,6 +574,15 @@ class Command(BaseCommand):
                 'is_superuser': False,
             },
         }
+        for vendor_data in DEMO_VENDORS:
+            users[vendor_data['key']] = {
+                'email': vendor_data['email'],
+                'first_name': vendor_data['first_name'],
+                'last_name': vendor_data['last_name'],
+                'role': 'vendor_admin',
+                'is_staff': True,
+                'is_superuser': False,
+            }
 
         created = {}
         for key, user_data in users.items():
@@ -563,26 +602,32 @@ class Command(BaseCommand):
 
         vendor_group = Group.objects.filter(name='vendor_admin').first()
         if vendor_group:
-            created['vendor'].groups.add(vendor_group)
+            for vendor_data in DEMO_VENDORS:
+                created[vendor_data['key']].groups.add(vendor_group)
 
         return created
 
-    def seed_vendor_profile(self, tenant, user):
-        return VendorProfile.objects.update_or_create(
-            user=user,
-            tenant=tenant,
-            defaults={
-                'store_name': 'Demo Tech Vendor',
-                'store_description': 'Local demo vendor for electronics.',
-                'contact_email': user.email,
-                'contact_phone': '+15550101010',
-                'is_active': True,
-                'rating': 4.8,
-                'total_sales': Decimal('3499.97'),
-            },
-        )[0]
+    def seed_vendor_profiles(self, tenant, users):
+        vendors = []
+        for vendor_data in DEMO_VENDORS:
+            user = users[vendor_data['key']]
+            vendor, _ = VendorProfile.objects.update_or_create(
+                user=user,
+                tenant=tenant,
+                defaults={
+                    'store_name': vendor_data['store_name'],
+                    'store_description': vendor_data['store_description'],
+                    'contact_email': user.email,
+                    'contact_phone': vendor_data['contact_phone'],
+                    'is_active': True,
+                    'rating': vendor_data['rating'],
+                    'total_sales': vendor_data['total_sales'],
+                },
+            )
+            vendors.append(vendor)
+        return vendors
 
-    def seed_catalog(self, tenant):
+    def seed_catalog(self, tenant, vendors):
         brands = {}
         for brand_data in BRANDS:
             brand, _ = Brand.objects.update_or_create(
@@ -611,7 +656,8 @@ class Command(BaseCommand):
         Category.objects.rebuild()
 
         products = {}
-        for product_data in PRODUCTS:
+        for product_index, product_data in enumerate(PRODUCTS):
+            vendor = vendors[product_index % len(vendors)]
             product, _ = Product.objects.update_or_create(
                 tenant=tenant,
                 sku=product_data['sku'],
@@ -621,6 +667,7 @@ class Command(BaseCommand):
                     'description': product_data['description'],
                     'brand': brands[product_data['brand']],
                     'category': categories[product_data['category']],
+                    'vendor': vendor,
                     'status': Product.Status.ACTIVE,
                     'base_price': product_data['base_price'],
                     'tech_specs': product_data['tech_specs'],
@@ -670,9 +717,9 @@ class Command(BaseCommand):
             variants.append(variant)
         return variants
 
-    def seed_inventory(self, tenant, user, variants):
-        vendor = VendorProfile.objects.get(user=user, tenant=tenant)
+    def seed_inventory(self, tenant, variants):
         for variant in variants:
+            vendor = variant.product.vendor
             Inventory.objects.update_or_create(
                 tenant=tenant,
                 product_variant=variant,
@@ -682,7 +729,6 @@ class Command(BaseCommand):
                     'low_stock_threshold': 10,
                 },
             )
-        return vendor
 
     def seed_cart(self, tenant, user, variants):
         active_cart, _ = Cart.objects.update_or_create(
