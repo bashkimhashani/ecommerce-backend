@@ -36,10 +36,22 @@ class CheckoutSession(TenantModel):
     class Meta:
         ordering = ['-updated_at']
         indexes = [
-            models.Index(fields=['tenant', 'status']),
-            models.Index(fields=['user', 'status']),
-            models.Index(fields=['cart', 'status']),
-            models.Index(fields=['idempotency_key']),
+            models.Index(
+                fields=['tenant', 'status'],
+                name='checkout_ch_tenant__83b44b_idx',
+            ),
+            models.Index(
+                fields=['user', 'status'],
+                name='checkout_ch_user_id_6e9990_idx',
+            ),
+            models.Index(
+                fields=['cart', 'status'],
+                name='checkout_ch_cart_id_3ba797_idx',
+            ),
+            models.Index(
+                fields=['idempotency_key'],
+                name='checkout_ch_idempot_de8bc9_idx',
+            ),
         ]
         constraints = [
             models.UniqueConstraint(

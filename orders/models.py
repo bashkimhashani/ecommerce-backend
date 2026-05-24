@@ -56,9 +56,18 @@ class Order(TenantModel):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['tenant', 'status']),
-            models.Index(fields=['user', 'status']),
-            models.Index(fields=['order_number']),
+            models.Index(
+                fields=['tenant', 'status'],
+                name='orders_orde_tenant__b18f3e_idx',
+            ),
+            models.Index(
+                fields=['user', 'status'],
+                name='orders_orde_user_id_75d6ea_idx',
+            ),
+            models.Index(
+                fields=['order_number'],
+                name='orders_orde_order_n_0fb8b4_idx',
+            ),
         ]
 
     def save(self, *args, **kwargs):
@@ -111,8 +120,14 @@ class OrderItem(TenantModel):
     class Meta:
         ordering = ['created_at']
         indexes = [
-            models.Index(fields=['tenant', 'order']),
-            models.Index(fields=['tenant', 'product_variant']),
+            models.Index(
+                fields=['tenant', 'order'],
+                name='orders_orde_tenant__e8f030_idx',
+            ),
+            models.Index(
+                fields=['tenant', 'product_variant'],
+                name='orders_orde_tenant__5eb05b_idx',
+            ),
         ]
 
     def save(self, *args, **kwargs):
@@ -140,9 +155,18 @@ class OrderEvent(TenantModel):
     class Meta:
         ordering = ['created_at']
         indexes = [
-            models.Index(fields=['tenant', 'order']),
-            models.Index(fields=['tenant', 'to_status']),
-            models.Index(fields=['created_at']),
+            models.Index(
+                fields=['tenant', 'order'],
+                name='orders_orde_tenant__ffc56c_idx',
+            ),
+            models.Index(
+                fields=['tenant', 'to_status'],
+                name='orders_orde_tenant__5c4b3d_idx',
+            ),
+            models.Index(
+                fields=['created_at'],
+                name='orders_orde_created_e6ae50_idx',
+            ),
         ]
 
     def save(self, *args, **kwargs):
