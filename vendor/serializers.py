@@ -1,6 +1,17 @@
 from rest_framework import serializers
+
 from .models import VendorProfile
-from users.models import User
+
+
+class VendorAnalyticsAskSerializer(serializers.Serializer):
+    question = serializers.CharField(max_length=1000, trim_whitespace=True)
+
+
+class VendorAnalyticsResponseSerializer(serializers.Serializer):
+    answer = serializers.CharField()
+    query = serializers.DictField()
+    result = serializers.DictField()
+
 
 class VendorProfileSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)

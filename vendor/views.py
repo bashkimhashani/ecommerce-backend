@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 
+from ai.services import AnalyticsQueryResolver, AnalyticsQueryValidationError
 from inventory.models import Inventory
 from inventory.serializers import InventorySerializer
 from users.permissions import IsVendorAdmin
@@ -14,7 +15,11 @@ from .order_reports import (
     vendor_order_summary_rows,
     vendor_order_totals,
 )
-from .serializers import OrderSummarySerializer
+from .serializers import (
+    OrderSummarySerializer,
+    VendorAnalyticsAskSerializer,
+    VendorAnalyticsResponseSerializer,
+)
 
 
 def get_vendor_for_request(request):
@@ -65,6 +70,36 @@ class VendorDashboardSummaryView(APIView):
             'low_stock_alerts': low_stock_items.count(),
             'low_stock_items': InventorySerializer(low_stock_items, many=True).data,
         })
+
+
+class VendorAnalyticsAskView(APIView):
+    permission_classes = [IsVendorAdmin]
+
+    @extend_schema(
+        tags=['Vendor Analytics'],
+        request=VendorAnalyticsAskSerializer,
+        responses={
+            200: VendorAnalyticsResponseSerializer,
+            400: OpenApiResponse(description='Unsupported analytics query.'),
+        },
+    )
+    def post(self, request):
+        serializer = VendorAnalyticsAskSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = AnalyticsQueryResolver().resolve(
+                tenant=request.user.tenant,
+                question=serializer.validated_data['question'],
+            )
+        except AnalyticsQueryValidationError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        response_serializer = VendorAnalyticsResponseSerializer(result)
+        return Response(response_serializer.data)
 
 
 class VendorInventoryListView(APIView):
