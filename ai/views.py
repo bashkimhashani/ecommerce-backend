@@ -9,11 +9,12 @@ from rest_framework.views import APIView
 
 from .serializers import ChatMessageSerializer
 from .services import ChatService, ProductContextRetriever
+from .throttles import ChatRateThrottle
 
 
 class ChatMessageView(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = []
+    throttle_classes = [ChatRateThrottle]
 
     def post(self, request):
         serializer = ChatMessageSerializer(data=request.data)

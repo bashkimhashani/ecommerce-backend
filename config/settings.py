@@ -235,6 +235,9 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': (
         'django_filters.rest_framework.DjangoFilterBackend',
     ),
+    'DEFAULT_THROTTLE_RATES': {
+        'chat_message': '20/min',
+    },
     'URL_FORMAT_OVERRIDE': None,
 }
 
