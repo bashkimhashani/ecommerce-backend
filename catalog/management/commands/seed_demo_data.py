@@ -1,18 +1,24 @@
 from decimal import Decimal
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.files import File
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from cart.models import Cart, CartItem
-from catalog.models import Brand, Category, Product, ProductVariant
+from catalog.models import Brand, Category, Product, ProductImage, ProductVariant
 from checkout.models import CheckoutSession
 from inventory.models import Inventory
 from orders.models import Order, OrderEvent, OrderItem
 from tenants.models import Tenant
 from vendor.models import VendorProfile
 
+
+SEED_IMAGE_DIR = (
+    Path(__file__).resolve().parents[2] / 'seed_images' / 'products'
+)
 
 TENANT_DATA = {
     'name': 'Demo Tech Store',
@@ -532,6 +538,7 @@ class Command(BaseCommand):
             users = self.seed_users(tenant)
             vendors = self.seed_vendor_profiles(tenant, users)
             products = self.seed_catalog(tenant, vendors)
+            self.seed_product_images(tenant)
             variants = self.seed_variants(tenant, products)
             self.seed_inventory(tenant, variants)
             cart = self.seed_cart(tenant, users['customer'], variants)
@@ -675,6 +682,38 @@ class Command(BaseCommand):
             )
             products[product_data['sku']] = product
         return products
+
+    def seed_product_images(self, tenant):
+        products = Product.all_objects.filter(tenant=tenant)
+        for product in products:
+            image_path = SEED_IMAGE_DIR / f'real-{product.slug}.jpg'
+            if not image_path.exists():
+                continue
+
+            for existing_image in ProductImage.all_objects.filter(
+                tenant=tenant,
+                product=product,
+            ):
+                for field_name in ['thumbnail', 'medium', 'large', 'image']:
+                    field = getattr(existing_image, field_name)
+                    if field:
+                        field.delete(save=False)
+                existing_image.delete()
+
+            product_image = ProductImage(
+                tenant=tenant,
+                product=product,
+                alt_text=f'{product.name} product photo',
+                sort_order=0,
+                is_primary=True,
+            )
+            with image_path.open('rb') as image_file:
+                product_image.image.save(
+                    image_path.name,
+                    File(image_file),
+                    save=False,
+                )
+            product_image.save()
 
     def seed_variants(self, tenant, products):
         variants = []

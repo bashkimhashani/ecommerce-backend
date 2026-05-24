@@ -7,6 +7,14 @@ from django.utils.encoding import force_bytes
 from django.utils.html import strip_tags
 from django.utils.http import urlsafe_base64_encode
 
+from .email_logging import create_email_log
+from .models import EmailLog
+
+
+ORDER_CONFIRMATION_TASK = 'notifications.tasks.send_order_confirmation'
+ORDER_SHIPPED_TASK = 'notifications.tasks.send_order_shipped'
+PASSWORD_RESET_TASK = 'notifications.tasks.send_password_reset_email'
+
 
 @shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_order_confirmation(order_id):
@@ -18,8 +26,18 @@ def send_order_confirmation(order_id):
         .get(pk=order_id)
     )
     recipient = order.user.email
+    subject = f'Order confirmation: {order.order_number}'
 
     if not recipient:
+        create_email_log(
+            task_name=ORDER_CONFIRMATION_TASK,
+            recipient=recipient,
+            subject=subject,
+            status=EmailLog.Status.SKIPPED,
+            tenant=order.tenant,
+            related_object_id=order.id,
+            message='No customer email recipient configured.',
+        )
         return {
             'order_id': order.id,
             'status': 'skipped',
@@ -34,14 +52,16 @@ def send_order_confirmation(order_id):
             'customer_name': customer_name(order.user),
         },
     )
+    plain_message = strip_tags(html_message)
 
-    send_mail(
-        subject=f'Order confirmation: {order.order_number}',
-        message=strip_tags(html_message),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-        recipient_list=[recipient],
-        fail_silently=False,
+    send_logged_email(
+        task_name=ORDER_CONFIRMATION_TASK,
+        recipient=recipient,
+        subject=subject,
+        plain_message=plain_message,
         html_message=html_message,
+        tenant=order.tenant,
+        related_object_id=order.id,
     )
 
     return {
@@ -62,8 +82,18 @@ def send_order_shipped(order_id):
         .get(pk=order_id)
     )
     recipient = order.user.email
+    subject = f'Order shipped: {order.order_number}'
 
     if not recipient:
+        create_email_log(
+            task_name=ORDER_SHIPPED_TASK,
+            recipient=recipient,
+            subject=subject,
+            status=EmailLog.Status.SKIPPED,
+            tenant=order.tenant,
+            related_object_id=order.id,
+            message='No customer email recipient configured.',
+        )
         return {
             'order_id': order.id,
             'status': 'skipped',
@@ -81,14 +111,16 @@ def send_order_shipped(order_id):
             ),
         },
     )
+    plain_message = strip_tags(html_message)
 
-    send_mail(
-        subject=f'Order shipped: {order.order_number}',
-        message=strip_tags(html_message),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-        recipient_list=[recipient],
-        fail_silently=False,
+    send_logged_email(
+        task_name=ORDER_SHIPPED_TASK,
+        recipient=recipient,
+        subject=subject,
+        plain_message=plain_message,
         html_message=html_message,
+        tenant=order.tenant,
+        related_object_id=order.id,
     )
 
     return {
@@ -104,8 +136,18 @@ def send_password_reset_email(user_id, token):
     User = get_user_model()
     user = User.objects.get(pk=user_id)
     recipient = user.email
+    subject = 'Reset your password'
 
     if not recipient:
+        create_email_log(
+            task_name=PASSWORD_RESET_TASK,
+            recipient=recipient,
+            subject=subject,
+            status=EmailLog.Status.SKIPPED,
+            tenant=getattr(user, 'tenant', None),
+            related_object_id=user.id,
+            message='No user email recipient configured.',
+        )
         return {
             'user_id': user.id,
             'status': 'skipped',
@@ -120,14 +162,16 @@ def send_password_reset_email(user_id, token):
             'reset_url': reset_url,
         },
     )
+    plain_message = strip_tags(html_message)
 
-    send_mail(
-        subject='Reset your password',
-        message=strip_tags(html_message),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-        recipient_list=[recipient],
-        fail_silently=False,
+    send_logged_email(
+        task_name=PASSWORD_RESET_TASK,
+        recipient=recipient,
+        subject=subject,
+        plain_message=plain_message,
         html_message=html_message,
+        tenant=getattr(user, 'tenant', None),
+        related_object_id=user.id,
     )
 
     return {
@@ -135,6 +179,49 @@ def send_password_reset_email(user_id, token):
         'status': 'sent',
         'recipient': recipient,
     }
+
+
+def send_logged_email(
+    *,
+    task_name,
+    recipient,
+    subject,
+    plain_message,
+    html_message,
+    tenant=None,
+    related_object_id='',
+):
+    try:
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+            recipient_list=[recipient],
+            fail_silently=False,
+            html_message=html_message,
+        )
+    except Exception as exc:
+        create_email_log(
+            task_name=task_name,
+            recipient=recipient,
+            subject=subject,
+            status=EmailLog.Status.FAILED,
+            tenant=tenant,
+            related_object_id=related_object_id,
+            message=plain_message,
+            error=str(exc),
+        )
+        raise
+
+    create_email_log(
+        task_name=task_name,
+        recipient=recipient,
+        subject=subject,
+        status=EmailLog.Status.SENT,
+        tenant=tenant,
+        related_object_id=related_object_id,
+        message=plain_message,
+    )
 
 
 def customer_name(user):
