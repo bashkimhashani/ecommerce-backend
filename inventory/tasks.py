@@ -5,7 +5,7 @@ from django.core.mail import send_mail
 from .models import Inventory
 
 
-@shared_task
+@shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_low_stock_alert(inventory_id):
     inventory = Inventory.all_objects.select_related(
         'vendor',
