@@ -251,6 +251,11 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'Ecommerce API',
     'DESCRIPTION': 'API for the Distributed Systems ecommerce project',
     'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'POSTPROCESSING_HOOKS': [
+        'drf_spectacular.hooks.postprocess_schema_enums',
+        'config.schema.group_endpoints_by_domain_tag',
+    ],
 }
 
 LOGGING = {
