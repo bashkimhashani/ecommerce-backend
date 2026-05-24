@@ -25,3 +25,49 @@ class AIReport(TenantModel):
 
     def __str__(self):
         return f'{self.report_type} report for tenant {self.tenant_id}'
+
+
+class Conversation(TenantModel):
+    session_id = models.CharField(max_length=120, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['tenant', 'session_id']),
+            models.Index(fields=['session_id', '-updated_at']),
+        ]
+
+    def __str__(self):
+        return self.session_id
+
+
+class ConversationMessage(TenantModel):
+    class Role(models.TextChoices):
+        USER = 'user', 'User'
+        ASSISTANT = 'assistant', 'Assistant'
+
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='messages',
+    )
+    role = models.CharField(max_length=20, choices=Role.choices)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['tenant', 'conversation', 'created_at']),
+            models.Index(fields=['conversation', 'created_at']),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.conversation_id and self.tenant_id is None:
+            self.tenant = self.conversation.tenant
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.role}: {self.content[:80]}'
