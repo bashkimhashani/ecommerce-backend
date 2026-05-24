@@ -7,11 +7,98 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from openai import OpenAI
 
+from catalog.models import Product
 from orders.models import Order, OrderItem
 
 
 class AnalyticsQueryValidationError(ValueError):
     pass
+
+
+class ProductContextRetriever:
+    def get_relevant_products(self, query, tenant=None, limit=5):
+        keywords = self.extract_keywords(query)
+        products = Product.all_objects.filter(status=Product.Status.ACTIVE)
+        if tenant:
+            products = products.filter(tenant=tenant)
+
+        candidates = products.select_related('brand', 'category')[:100]
+        scored_products = []
+        for product in candidates:
+            searchable_text = ' '.join(
+                [
+                    product.name,
+                    product.sku,
+                    product.description,
+                    product.brand.name,
+                    product.category.name,
+                    json.dumps(product.tech_specs),
+                ],
+            ).lower()
+            score = sum(1 for keyword in keywords if keyword in searchable_text)
+            if score:
+                scored_products.append((score, product))
+
+        if not scored_products and keywords:
+            scored_products = [(0, product) for product in candidates[:limit]]
+
+        scored_products.sort(key=lambda item: (-item[0], item[1].name))
+        return [self.serialize_product(product) for _, product in scored_products[:limit]]
+
+    def extract_keywords(self, query):
+        ignored_words = {
+            'a',
+            'about',
+            'an',
+            'and',
+            'for',
+            'i',
+            'me',
+            'of',
+            'please',
+            'recommend',
+            'show',
+            'the',
+            'to',
+            'with',
+        }
+        return [
+            word.strip('.,!?;:()[]{}"\'').lower()
+            for word in query.split()
+            if len(word.strip('.,!?;:()[]{}"\'').lower()) > 2
+            and word.strip('.,!?;:()[]{}"\'').lower() not in ignored_words
+        ]
+
+    def serialize_product(self, product):
+        return {
+            'id': product.id,
+            'name': product.name,
+            'sku': product.sku,
+            'brand': product.brand.name,
+            'category': product.category.name,
+            'price': str(product.base_price),
+            'description': product.description,
+            'tech_specs': product.tech_specs,
+        }
+
+
+class ChatService:
+    def __init__(self):
+        client_options = {'api_key': settings.OPENAI_API_KEY}
+        if settings.OPENAI_BASE_URL:
+            client_options['base_url'] = settings.OPENAI_BASE_URL
+        self.client = OpenAI(**client_options)
+
+    def complete(self, messages, system_prompt):
+        response = self.client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                *messages,
+            ],
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
 
 
 class SalesAggregator:
