@@ -2,8 +2,14 @@ from django.core.cache import cache
 from django.db.models import F
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import serializers, status
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    inline_serializer,
+)
 
 from ai.models import AIReport
 from ai.services import AnalyticsQueryResolver, AnalyticsQueryValidationError
@@ -300,6 +306,44 @@ class ExportStatusView(APIView):
     """
     permission_classes = [IsVendorAdmin]
 
+    @extend_schema(
+        tags=['Vendor Orders'],
+        parameters=[
+            OpenApiParameter(
+                name='task_id',
+                type=str,
+                required=True,
+                description='Celery task id returned by the export endpoint.',
+            ),
+        ],
+        responses={
+            status.HTTP_200_OK: inline_serializer(
+                name='VendorExportStatusResponse',
+                fields={
+                    'task_id': serializers.CharField(),
+                    'status': serializers.CharField(),
+                    'result': serializers.DictField(required=False),
+                    'download_url': serializers.CharField(required=False),
+                    'error': serializers.CharField(required=False),
+                },
+            ),
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                description='task_id query parameter is required.',
+            ),
+        },
+        examples=[
+            OpenApiExample(
+                'Export status response',
+                value={
+                    'task_id': '2d4b3d5a-5876-4f18-9442-7ec3c7b4a0fb',
+                    'status': 'SUCCESS',
+                    'result': {'download_url': '/media/exports/orders.csv'},
+                    'download_url': '/media/exports/orders.csv',
+                },
+                response_only=True,
+            ),
+        ],
+    )
     def get(self, request):
         task_id = request.query_params.get('task_id')
 
