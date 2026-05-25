@@ -104,6 +104,25 @@ class CartService:
         cls._invalidate_cart_after_commit(cart)
         return item
 
+    @staticmethod
+    def get_item(cart, item_id):
+        return cart.items.filter(pk=item_id).first()
+
+    @classmethod
+    def update_item_for_cart(cls, cart, item_id, quantity):
+        item = cls.get_item(cart, item_id)
+        if item is None:
+            return None
+        return cls.update_item_quantity(item=item, quantity=quantity)
+
+    @classmethod
+    def remove_item_from_cart(cls, cart, item_id):
+        item = cls.get_item(cart, item_id)
+        if item is None:
+            return False
+        cls.remove_item(item)
+        return True
+
     @classmethod
     @transaction.atomic
     def update_item_quantity(cls, item, quantity):

@@ -144,25 +144,24 @@ class CartItemDetailView(APIView):
     )
     def patch(self, request, item_id):
         cart = CartService.get_or_create_cart(request)
-        item = cart.items.filter(pk=item_id).first()
-        if item is None:
-            return Response(
-                {'detail': 'Cart item not found.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
         serializer = CartItemUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
-            item = CartService.update_item_quantity(
-                item=item,
+            item = CartService.update_item_for_cart(
+                cart=cart,
+                item_id=item_id,
                 quantity=serializer.validated_data['quantity'],
             )
         except ValueError as exc:
             return Response(
                 {'quantity': [str(exc)]},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        if item is None:
+            return Response(
+                {'detail': 'Cart item not found.'},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         return Response(CartItemSerializer(item).data)
@@ -180,12 +179,10 @@ class CartItemDetailView(APIView):
     )
     def delete(self, request, item_id):
         cart = CartService.get_or_create_cart(request)
-        item = cart.items.filter(pk=item_id).first()
-        if item is None:
+        if not CartService.remove_item_from_cart(cart, item_id):
             return Response(
                 {'detail': 'Cart item not found.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        CartService.remove_item(item)
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -2,6 +2,10 @@ from users.serializers import CustomTokenObtainPairSerializer
 
 
 class TenantRegistrationService:
+    @classmethod
+    def register(cls, serializer):
+        return cls.build_registration_response(serializer.save())
+
     @staticmethod
     def build_registration_response(result):
         user = result['user']

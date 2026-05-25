@@ -19,6 +19,7 @@ from .serializers import (
     VendorAnalyticsResponseSerializer,
 )
 from .services import VendorService
+from .services import UnsupportedExportFormatError, VendorProfileNotFoundError
 
 
 class VendorDashboardSummaryView(APIView):
@@ -87,9 +88,10 @@ class VendorAnalyticsAskView(APIView):
         serializer = VendorAnalyticsAskSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            result = AnalyticsQueryResolver().resolve(
-                tenant=request.user.tenant,
+            result = VendorService.resolve_analytics_query(
+                user=request.user,
                 question=serializer.validated_data['question'],
+                resolver_class=AnalyticsQueryResolver,
             )
         except AnalyticsQueryValidationError as exc:
             return Response(
@@ -164,7 +166,7 @@ class VendorInventoryDetailView(APIView):
             partial=True,
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        VendorService.update_inventory_item(request.user, pk, serializer)
         return Response(serializer.data)
 
 
@@ -215,21 +217,24 @@ class VendorOrdersExportView(APIView):
     def get(self, request):
         format_param = request.query_params.get('format', 'csv')
 
-        if format_param != 'csv':
+        try:
+            export_data = VendorService.queue_order_export_for_user(
+                request.user,
+                format_param,
+            )
+        except UnsupportedExportFormatError as exc:
             return Response(
-                {'error': 'Only CSV format is supported'},
+                {'error': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        vendor = VendorService.get_vendor_for_user(request.user)
-        if vendor is None:
+        except VendorProfileNotFoundError as exc:
             return Response(
-                {'error': 'Vendor profile not found'},
+                {'error': str(exc)},
                 status=status.HTTP_404_NOT_FOUND
             )
 
         return Response(
-            VendorService.queue_order_export(request.user, vendor),
+            export_data,
             status=status.HTTP_202_ACCEPTED,
         )
 
