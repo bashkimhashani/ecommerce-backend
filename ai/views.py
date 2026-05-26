@@ -22,32 +22,32 @@ class ChatMessageView(APIView):
     chat_workflow_service_class = ChatWorkflowService
 
     @extend_schema(
-        tags=['AI Chat'],
+        tags=["AI Chat"],
         request=ChatMessageSerializer,
         responses={status.HTTP_200_OK: ChatResponseSerializer},
         examples=[
             OpenApiExample(
-                'Chat message request',
+                "Chat message request",
                 value={
-                    'message': 'Which laptop is best for programming?',
-                    'session_id': 'customer-session-123',
+                    "message": "Which laptop is best for programming?",
+                    "session_id": "customer-session-123",
                 },
                 request_only=True,
             ),
             OpenApiExample(
-                'Chat message response',
+                "Chat message response",
                 value={
-                    'session_id': 'customer-session-123',
-                    'message': 'The TechBook Pro is a strong match.',
-                    'used_fallback': False,
-                    'products': [
+                    "session_id": "customer-session-123",
+                    "message": "The TechBook Pro is a strong match.",
+                    "used_fallback": False,
+                    "products": [
                         {
-                            'name': 'TechBook Pro 14',
-                            'brand': 'TechBrand',
-                            'price': '1299.00',
-                            'category': 'Laptops',
-                            'sku': 'TB-PRO-14',
-                            'tech_specs': {'ram': '16GB'},
+                            "name": "TechBook Pro 14",
+                            "brand": "TechBrand",
+                            "price": "1299.00",
+                            "category": "Laptops",
+                            "sku": "TB-PRO-14",
+                            "tech_specs": {"ram": "16GB"},
                         },
                     ],
                 },
@@ -61,9 +61,9 @@ class ChatMessageView(APIView):
 
         return Response(
             self.chat_workflow_service_class().respond(
-                message=serializer.validated_data['message'],
-                session_id=serializer.validated_data.get('session_id'),
-                tenant=getattr(request, 'tenant', None),
+                message=serializer.validated_data["message"],
+                session_id=serializer.validated_data.get("session_id"),
+                tenant=getattr(request, "tenant", None),
             ),
             status=status.HTTP_200_OK,
         )
@@ -75,21 +75,21 @@ class ChatHistoryView(APIView):
     history_store_class = ChatHistoryStore
 
     @extend_schema(
-        tags=['AI Chat'],
+        tags=["AI Chat"],
         responses={status.HTTP_200_OK: ChatHistoryResponseSerializer},
         examples=[
             OpenApiExample(
-                'Chat history response',
+                "Chat history response",
                 value={
-                    'session_id': 'customer-session-123',
-                    'messages': [
+                    "session_id": "customer-session-123",
+                    "messages": [
                         {
-                            'role': 'user',
-                            'content': 'Show me gaming laptops.',
+                            "role": "user",
+                            "content": "Show me gaming laptops.",
                         },
                         {
-                            'role': 'assistant',
-                            'content': 'Here are a few catalog matches.',
+                            "role": "assistant",
+                            "content": "Here are a few catalog matches.",
                         },
                     ],
                 },
@@ -100,8 +100,8 @@ class ChatHistoryView(APIView):
     def get(self, request, session_id):
         return Response(
             {
-                'session_id': session_id,
-                'messages': self.history_store_class().get_history(session_id),
+                "session_id": session_id,
+                "messages": self.history_store_class().get_history(session_id),
             },
             status=status.HTTP_200_OK,
         )

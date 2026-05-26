@@ -12,15 +12,15 @@ from tenants.mixins import TenantModel
 
 class Cart(TenantModel):
     class Status(models.TextChoices):
-        ACTIVE = 'active', 'Active'
-        MERGED = 'merged', 'Merged'
-        CHECKED_OUT = 'checked_out', 'Checked out'
-        ABANDONED = 'abandoned', 'Abandoned'
+        ACTIVE = "active", "Active"
+        MERGED = "merged", "Merged"
+        CHECKED_OUT = "checked_out", "Checked out"
+        ABANDONED = "abandoned", "Abandoned"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='carts',
+        related_name="carts",
         null=True,
         blank=True,
     )
@@ -40,47 +40,47 @@ class Cart(TenantModel):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-updated_at']
+        ordering = ["-updated_at"]
         indexes = [
-            models.Index(fields=['tenant', 'status']),
-            models.Index(fields=['user', 'status']),
-            models.Index(fields=['session_key', 'status']),
+            models.Index(fields=["tenant", "status"]),
+            models.Index(fields=["user", "status"]),
+            models.Index(fields=["session_key", "status"]),
         ]
         constraints = [
             models.CheckConstraint(
                 condition=(
                     Q(user__isnull=False)
-                    | (Q(session_key__isnull=False) & ~Q(session_key=''))
+                    | (Q(session_key__isnull=False) & ~Q(session_key=""))
                 ),
-                name='cart_requires_user_or_session',
+                name="cart_requires_user_or_session",
             ),
             models.UniqueConstraint(
-                fields=['user'],
-                condition=Q(status='active', user__isnull=False),
-                name='unique_active_cart_per_user',
+                fields=["user"],
+                condition=Q(status="active", user__isnull=False),
+                name="unique_active_cart_per_user",
             ),
             models.UniqueConstraint(
-                fields=['session_key'],
+                fields=["session_key"],
                 condition=(
-                    Q(status='active')
+                    Q(status="active")
                     & Q(session_key__isnull=False)
-                    & ~Q(session_key='')
+                    & ~Q(session_key="")
                 ),
-                name='unique_active_cart_per_session',
+                name="unique_active_cart_per_session",
             ),
         ]
 
     @property
     def total_items(self):
         return self.items.aggregate(
-            total=Coalesce(Sum('quantity'), 0, output_field=models.IntegerField()),
-        )['total']
+            total=Coalesce(Sum("quantity"), 0, output_field=models.IntegerField()),
+        )["total"]
 
     @property
     def subtotal(self):
         return sum(
             (item.line_total for item in self.items.all()),
-            Decimal('0.00'),
+            Decimal("0.00"),
         )
 
     def save(self, *args, **kwargs):
@@ -93,19 +93,19 @@ class Cart(TenantModel):
 
     def __str__(self):
         owner = self.user.email if self.user_id else self.session_key
-        return f'Cart {self.pk} ({owner})'
+        return f"Cart {self.pk} ({owner})"
 
 
 class CartItem(TenantModel):
     cart = models.ForeignKey(
         Cart,
         on_delete=models.CASCADE,
-        related_name='items',
+        related_name="items",
     )
     product_variant = models.ForeignKey(
-        'catalog.ProductVariant',
+        "catalog.ProductVariant",
         on_delete=models.PROTECT,
-        related_name='cart_items',
+        related_name="cart_items",
     )
     quantity = models.PositiveIntegerField(
         validators=[MinValueValidator(1)],
@@ -116,19 +116,19 @@ class CartItem(TenantModel):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['created_at']
+        ordering = ["created_at"]
         indexes = [
-            models.Index(fields=['tenant', 'cart']),
-            models.Index(fields=['tenant', 'product_variant']),
+            models.Index(fields=["tenant", "cart"]),
+            models.Index(fields=["tenant", "product_variant"]),
         ]
         constraints = [
             models.CheckConstraint(
                 condition=Q(quantity__gte=1),
-                name='cart_item_quantity_positive',
+                name="cart_item_quantity_positive",
             ),
             models.UniqueConstraint(
-                fields=['cart', 'product_variant'],
-                name='unique_variant_per_cart',
+                fields=["cart", "product_variant"],
+                name="unique_variant_per_cart",
             ),
         ]
 
@@ -142,4 +142,4 @@ class CartItem(TenantModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.quantity} x {self.product_variant}'
+        return f"{self.quantity} x {self.product_variant}"

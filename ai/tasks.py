@@ -26,8 +26,8 @@ def generate_nightly_report(self, tenant_id=None):
     report = AIReport.all_objects.create(
         tenant=tenant,
         report_type=AIReport.ReportType.NIGHTLY_SALES,
-        content=generated['content'],
-        prompt_tokens=generated.get('prompt_tokens', 0),
-        completion_tokens=generated.get('completion_tokens', 0),
+        content=generated["content"],
+        prompt_tokens=generated.get("prompt_tokens", 0),
+        completion_tokens=generated.get("completion_tokens", 0),
     )
     return report.id

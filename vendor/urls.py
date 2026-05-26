@@ -12,35 +12,37 @@ from .views import (
 
 urlpatterns = [
     path(
-        'reports/latest/',
+        "reports/latest/",
         VendorLatestReportView.as_view(),
-        name='vendor-report-latest',
+        name="vendor-report-latest",
     ),
     path(
-        'analytics/ask/',
+        "analytics/ask/",
         VendorAnalyticsAskView.as_view(),
-        name='vendor-analytics-ask',
+        name="vendor-analytics-ask",
     ),
     path(
-        'dashboard/summary/',
+        "dashboard/summary/",
         VendorDashboardSummaryView.as_view(),
-        name='vendor-dashboard-summary',
+        name="vendor-dashboard-summary",
     ),
     path(
-        'inventory/',
+        "inventory/",
         VendorInventoryListView.as_view(),
-        name='vendor-inventory-list',
+        name="vendor-inventory-list",
     ),
     path(
-        'inventory/<int:pk>/',
+        "inventory/<int:pk>/",
         VendorInventoryDetailView.as_view(),
-        name='vendor-inventory-detail',
+        name="vendor-inventory-detail",
     ),
     path(
-        'orders/summary/',
+        "orders/summary/",
         VendorOrderSummaryView.as_view(),
-        name='vendor-order-summary',
+        name="vendor-order-summary",
     ),
-    path('orders/export/', VendorOrdersExportView.as_view(), name='vendor-order-export'),
-    path('export/status/', ExportStatusView.as_view(), name='export-status'),
+    path(
+        "orders/export/", VendorOrdersExportView.as_view(), name="vendor-order-export"
+    ),
+    path("export/status/", ExportStatusView.as_view(), name="export-status"),
 ]

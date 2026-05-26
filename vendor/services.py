@@ -39,23 +39,27 @@ class VendorService:
 
         inventory = cls.get_vendor_inventory(vendor)
         low_stock_items = inventory.filter(
-            quantity__lt=F('low_stock_threshold'),
+            quantity__lt=F("low_stock_threshold"),
         )
         order_totals = vendor_order_totals(vendor)
 
         return {
-            'order_count': order_totals['order_count'],
-            'revenue': serialize_decimal(order_totals['revenue']),
-            'low_stock_alerts': low_stock_items.count(),
-            'low_stock_items': low_stock_items,
+            "order_count": order_totals["order_count"],
+            "revenue": serialize_decimal(order_totals["revenue"]),
+            "low_stock_alerts": low_stock_items.count(),
+            "low_stock_items": low_stock_items,
         }
 
     @staticmethod
     def get_latest_sales_report(user):
-        return AIReport.all_objects.filter(
-            tenant=user.tenant,
-            report_type=AIReport.ReportType.NIGHTLY_SALES,
-        ).order_by('-generated_at').first()
+        return (
+            AIReport.all_objects.filter(
+                tenant=user.tenant,
+                report_type=AIReport.ReportType.NIGHTLY_SALES,
+            )
+            .order_by("-generated_at")
+            .first()
+        )
 
     @staticmethod
     def get_vendor_inventory(vendor):
@@ -63,8 +67,8 @@ class VendorService:
             tenant=vendor.tenant,
             vendor=vendor,
         ).select_related(
-            'product_variant',
-            'product_variant__product',
+            "product_variant",
+            "product_variant__product",
         )
 
     @staticmethod
@@ -85,8 +89,8 @@ class VendorService:
             return None
 
         return cls.get_vendor_inventory(vendor).order_by(
-            'product_variant__product__name',
-            'id',
+            "product_variant__product__name",
+            "id",
         )
 
     @classmethod
@@ -95,11 +99,7 @@ class VendorService:
         if vendor is None:
             return None, None
 
-        inventory = (
-            cls.get_vendor_inventory(vendor)
-            .filter(id=inventory_id)
-            .first()
-        )
+        inventory = cls.get_vendor_inventory(vendor).filter(id=inventory_id).first()
         return vendor, inventory
 
     @classmethod
@@ -107,7 +107,7 @@ class VendorService:
         _, inventory = cls.get_inventory_item_for_user(user, inventory_id)
         if inventory is None:
             if cls.get_vendor_for_user(user) is None:
-                raise VendorProfileNotFoundError('Vendor profile not found')
+                raise VendorProfileNotFoundError("Vendor profile not found")
             return None
 
         serializer.instance = inventory
@@ -115,7 +115,7 @@ class VendorService:
 
     @staticmethod
     def get_order_summary(vendor):
-        cache_key = f'vendor_order_summary_{vendor.id}'
+        cache_key = f"vendor_order_summary_{vendor.id}"
         cached_data = cache.get(cache_key)
         if cached_data is not None:
             return cached_data
@@ -127,22 +127,22 @@ class VendorService:
     @staticmethod
     def queue_order_export(user, vendor):
         task = export_vendor_orders_csv.delay(vendor.id, user.id)
-        cache.set(f'vendor_export_task_{user.id}', task.id, 3600)
+        cache.set(f"vendor_export_task_{user.id}", task.id, 3600)
         return {
-            'task_id': task.id,
-            'status': 'queued',
-            'message': 'CSV export has been queued',
-            'poll_url': f'/api/v1/vendor/export/status/?task_id={task.id}',
+            "task_id": task.id,
+            "status": "queued",
+            "message": "CSV export has been queued",
+            "poll_url": f"/api/v1/vendor/export/status/?task_id={task.id}",
         }
 
     @classmethod
-    def queue_order_export_for_user(cls, user, format_param='csv'):
-        if format_param != 'csv':
-            raise UnsupportedExportFormatError('Only CSV format is supported')
+    def queue_order_export_for_user(cls, user, format_param="csv"):
+        if format_param != "csv":
+            raise UnsupportedExportFormatError("Only CSV format is supported")
 
         vendor = cls.get_vendor_for_user(user)
         if vendor is None:
-            raise VendorProfileNotFoundError('Vendor profile not found')
+            raise VendorProfileNotFoundError("Vendor profile not found")
 
         return cls.queue_order_export(user, vendor)
 
@@ -150,14 +150,14 @@ class VendorService:
     def get_export_status(task_id):
         task = AsyncResult(task_id)
         response_data = {
-            'task_id': task_id,
-            'status': task.state,
+            "task_id": task_id,
+            "status": task.state,
         }
 
-        if task.state == 'SUCCESS':
-            response_data['result'] = task.result
-            response_data['download_url'] = task.result.get('download_url')
-        elif task.state == 'FAILURE':
-            response_data['error'] = str(task.info)
+        if task.state == "SUCCESS":
+            response_data["result"] = task.result
+            response_data["download_url"] = task.result.get("download_url")
+        elif task.state == "FAILURE":
+            response_data["error"] = str(task.info)
 
         return response_data

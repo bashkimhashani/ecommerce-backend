@@ -4,11 +4,11 @@ from .models import Inventory
 
 class InventorySerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(
-        source='product_variant.product.name',
+        source="product_variant.product.name",
         read_only=True,
     )
     product_sku = serializers.CharField(
-        source='product_variant.product.sku',
+        source="product_variant.product.sku",
         read_only=True,
     )
     variant_name = serializers.SerializerMethodField()
@@ -17,30 +17,30 @@ class InventorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Inventory
         fields = [
-            'id',
-            'product_variant',
-            'product_name',
-            'product_sku',
-            'variant_name',
-            'vendor',
-            'tenant',
-            'quantity',
-            'low_stock_threshold',
-            'is_low_stock',
-            'created_at',
-            'last_updated',
+            "id",
+            "product_variant",
+            "product_name",
+            "product_sku",
+            "variant_name",
+            "vendor",
+            "tenant",
+            "quantity",
+            "low_stock_threshold",
+            "is_low_stock",
+            "created_at",
+            "last_updated",
         ]
         read_only_fields = [
-            'id',
-            'product_variant',
-            'product_name',
-            'product_sku',
-            'variant_name',
-            'vendor',
-            'tenant',
-            'is_low_stock',
-            'created_at',
-            'last_updated',
+            "id",
+            "product_variant",
+            "product_name",
+            "product_sku",
+            "variant_name",
+            "vendor",
+            "tenant",
+            "is_low_stock",
+            "created_at",
+            "last_updated",
         ]
 
     def get_variant_name(self, obj):
@@ -49,4 +49,4 @@ class InventorySerializer(serializers.ModelSerializer):
             obj.product_variant.storage,
             obj.product_variant.ram,
         ]
-        return ' / '.join(value for value in values if value) or 'Default'
+        return " / ".join(value for value in values if value) or "Default"

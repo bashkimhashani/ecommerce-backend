@@ -42,7 +42,7 @@ class CategoryTreeView(APIView):
 
     @extend_schema(
         responses=CategoryTreeSerializer(many=True),
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def get(self, request):
         categories = CatalogQueryService.list_category_tree(request.user)
@@ -57,48 +57,50 @@ class ProductAutocompleteView(APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(
-                name='q',
+                name="q",
                 type=str,
                 required=False,
-                description='Autocomplete prefix for product name suggestions.',
+                description="Autocomplete prefix for product name suggestions.",
             ),
         ],
         responses=inline_serializer(
-            name='ProductAutocompleteResponse',
+            name="ProductAutocompleteResponse",
             fields={
-                'suggestions': serializers.ListField(
+                "suggestions": serializers.ListField(
                     child=serializers.CharField(),
                 ),
             },
         ),
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def get(self, request):
-        return Response({
-            'suggestions': CatalogQueryService.autocomplete_product_names(
-                user=request.user,
-                query=request.query_params.get('q', ''),
-                max_suggestions=self.max_suggestions,
-            ),
-        })
+        return Response(
+            {
+                "suggestions": CatalogQueryService.autocomplete_product_names(
+                    user=request.user,
+                    query=request.query_params.get("q", ""),
+                    max_suggestions=self.max_suggestions,
+                ),
+            }
+        )
 
 
 class ProductListView(VendorWritePermissionMixin, APIView):
     permission_classes = [AllowAny]
     pagination_class = ProductCursorPagination
     cache_timeout = 300
-    vendor_write_methods = {'POST'}
+    vendor_write_methods = {"POST"}
 
     @extend_schema(
         responses=inline_serializer(
-            name='PaginatedProductListResponse',
+            name="PaginatedProductListResponse",
             fields={
-                'next': serializers.URLField(allow_null=True),
-                'previous': serializers.URLField(allow_null=True),
-                'results': ProductListSerializer(many=True),
+                "next": serializers.URLField(allow_null=True),
+                "previous": serializers.URLField(allow_null=True),
+                "results": ProductListSerializer(many=True),
             },
         ),
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def get(self, request):
         response_data = CatalogQueryService.get_cached_product_list(
@@ -118,25 +120,25 @@ class ProductListView(VendorWritePermissionMixin, APIView):
         serializer = ProductListSerializer(
             page,
             many=True,
-            context={'request': request},
+            context={"request": request},
         )
         return paginator.get_paginated_response(serializer.data).data
 
     @extend_schema(
         request=ProductCreateSerializer,
         responses={status.HTTP_201_CREATED: ProductDetailSerializer},
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def post(self, request):
         serializer = ProductCreateSerializer(
             data=request.data,
-            context={'request': request},
+            context={"request": request},
         )
         serializer.is_valid(raise_exception=True)
         product = ProductWriteService.create_product(request.user, serializer)
         response_serializer = ProductDetailSerializer(
             product,
-            context={'request': request},
+            context={"request": request},
         )
         return Response(
             response_serializer.data,
@@ -152,24 +154,22 @@ class ProductSearchView(APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(
-                name='q',
+                name="q",
                 type=str,
                 required=False,
-                description=(
-                    'Search term for product name, SKU, brand, or category.'
-                ),
+                description=("Search term for product name, SKU, brand, or category."),
             ),
         ],
         responses=inline_serializer(
-            name='PaginatedProductSearchResponse',
+            name="PaginatedProductSearchResponse",
             fields={
-                'next': serializers.URLField(allow_null=True),
-                'previous': serializers.URLField(allow_null=True),
-                'results': ProductListSerializer(many=True),
-                'facets': serializers.JSONField(),
+                "next": serializers.URLField(allow_null=True),
+                "previous": serializers.URLField(allow_null=True),
+                "results": ProductListSerializer(many=True),
+                "facets": serializers.JSONField(),
             },
         ),
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def get(self, request):
         products, filtered_products = CatalogQueryService.filtered_search_products(
@@ -185,10 +185,10 @@ class ProductSearchView(APIView):
         serializer = ProductListSerializer(
             page,
             many=True,
-            context={'request': request},
+            context={"request": request},
         )
         response = paginator.get_paginated_response(serializer.data)
-        response.data['facets'] = CatalogQueryService.product_search_facets(
+        response.data["facets"] = CatalogQueryService.product_search_facets(
             products,
         )
         return response
@@ -197,11 +197,11 @@ class ProductSearchView(APIView):
 class ProductDetailView(VendorWritePermissionMixin, APIView):
     permission_classes = [AllowAny]
     cache_timeout = 600
-    vendor_write_methods = {'PUT', 'DELETE'}
+    vendor_write_methods = {"PUT", "DELETE"}
 
     @extend_schema(
         responses=ProductDetailSerializer,
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def get(self, request, slug):
         response_data = CatalogQueryService.get_cached_product_detail(
@@ -219,21 +219,21 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         )
         serializer = ProductDetailSerializer(
             product,
-            context={'request': request},
+            context={"request": request},
         )
         return serializer.data
 
     @extend_schema(
         request=ProductCreateSerializer,
         responses=ProductDetailSerializer,
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def put(self, request, slug):
         product = ProductWriteService.get_tenant_product(request.user, slug)
         serializer = ProductCreateSerializer(
             product,
             data=request.data,
-            context={'request': request},
+            context={"request": request},
         )
         serializer.is_valid(raise_exception=True)
         product = ProductWriteService.update_product(
@@ -243,13 +243,13 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         )
         response_serializer = ProductDetailSerializer(
             product,
-            context={'request': request},
+            context={"request": request},
         )
         return Response(response_serializer.data)
 
     @extend_schema(
         responses={status.HTTP_204_NO_CONTENT: None},
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def delete(self, request, slug):
         ProductWriteService.delete_product(request.user, slug)
@@ -263,7 +263,7 @@ class ProductImageUploadView(APIView):
     @extend_schema(
         request=ProductImageSerializer,
         responses={status.HTTP_201_CREATED: ProductImageSerializer},
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def post(self, request, slug):
         product = ProductImageService.get_product_for_user(request.user, slug)
@@ -278,7 +278,7 @@ class ProductImageUploadView(APIView):
 
         response_serializer = ProductImageSerializer(
             product_image,
-            context={'request': request},
+            context={"request": request},
         )
         return Response(
             response_serializer.data,
@@ -288,7 +288,7 @@ class ProductImageUploadView(APIView):
     @extend_schema(
         request=ProductImageBulkUpdateSerializer,
         responses=ProductImageSerializer(many=True),
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def patch(self, request, slug):
         product = ProductImageService.get_product_for_user(request.user, slug)
@@ -298,12 +298,12 @@ class ProductImageUploadView(APIView):
         updated_images = ProductImageService.bulk_update_images(
             request.user,
             product,
-            serializer.validated_data['images'],
+            serializer.validated_data["images"],
         )
         response_serializer = ProductImageSerializer(
             updated_images,
             many=True,
-            context={'request': request},
+            context={"request": request},
         )
         return Response(response_serializer.data)
 
@@ -313,7 +313,7 @@ class ProductImageDeleteView(APIView):
 
     @extend_schema(
         responses={status.HTTP_204_NO_CONTENT: None},
-        tags=['Catalog'],
+        tags=["Catalog"],
     )
     def delete(self, request, slug, image_id):
         product = ProductImageService.get_product_for_user(request.user, slug)

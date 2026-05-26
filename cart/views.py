@@ -17,27 +17,27 @@ class CartDetailView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        tags=['Cart'],
+        tags=["Cart"],
         responses={status.HTTP_200_OK: CartSerializer},
         examples=[
             OpenApiExample(
-                'Cart response',
+                "Cart response",
                 value={
-                    'id': 1,
-                    'status': 'active',
-                    'items': [
+                    "id": 1,
+                    "status": "active",
+                    "items": [
                         {
-                            'id': 10,
-                            'product_variant_id': 3,
-                            'product_name': 'TechBook Pro 14',
-                            'variant_label': 'Space Gray, 512GB, 16GB',
-                            'quantity': 1,
-                            'unit_price': '1299.00',
-                            'line_total': '1299.00',
+                            "id": 10,
+                            "product_variant_id": 3,
+                            "product_name": "TechBook Pro 14",
+                            "variant_label": "Space Gray, 512GB, 16GB",
+                            "quantity": 1,
+                            "unit_price": "1299.00",
+                            "line_total": "1299.00",
                         },
                     ],
-                    'total_items': 1,
-                    'subtotal': '1299.00',
+                    "total_items": 1,
+                    "subtotal": "1299.00",
                 },
                 response_only=True,
             ),
@@ -51,30 +51,30 @@ class CartItemCreateView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        tags=['Cart'],
+        tags=["Cart"],
         request=CartItemCreateSerializer,
         responses={
             status.HTTP_201_CREATED: CartItemSerializer,
             status.HTTP_400_BAD_REQUEST: OpenApiResponse(
-                description='Invalid item payload or insufficient stock.',
+                description="Invalid item payload or insufficient stock.",
             ),
         },
         examples=[
             OpenApiExample(
-                'Add cart item request',
-                value={'product_variant_id': 3, 'quantity': 2},
+                "Add cart item request",
+                value={"product_variant_id": 3, "quantity": 2},
                 request_only=True,
             ),
             OpenApiExample(
-                'Add cart item response',
+                "Add cart item response",
                 value={
-                    'id': 10,
-                    'product_variant_id': 3,
-                    'product_name': 'TechBook Pro 14',
-                    'variant_label': 'Space Gray, 512GB, 16GB',
-                    'quantity': 2,
-                    'unit_price': '1299.00',
-                    'line_total': '2598.00',
+                    "id": 10,
+                    "product_variant_id": 3,
+                    "product_name": "TechBook Pro 14",
+                    "variant_label": "Space Gray, 512GB, 16GB",
+                    "quantity": 2,
+                    "unit_price": "1299.00",
+                    "line_total": "2598.00",
                 },
                 response_only=True,
             ),
@@ -84,19 +84,19 @@ class CartItemCreateView(APIView):
         cart = CartService.get_or_create_cart(request)
         serializer = CartItemCreateSerializer(
             data=request.data,
-            context={'cart': cart},
+            context={"cart": cart},
         )
         serializer.is_valid(raise_exception=True)
 
         try:
             item = CartService.add_item(
                 cart=cart,
-                product_variant=serializer.validated_data['product_variant'],
-                quantity=serializer.validated_data['quantity'],
+                product_variant=serializer.validated_data["product_variant"],
+                quantity=serializer.validated_data["quantity"],
             )
         except ValueError as exc:
             return Response(
-                {'quantity': [str(exc)]},
+                {"quantity": [str(exc)]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -110,33 +110,33 @@ class CartItemDetailView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        tags=['Cart'],
+        tags=["Cart"],
         request=CartItemUpdateSerializer,
         responses={
             status.HTTP_200_OK: CartItemSerializer,
             status.HTTP_400_BAD_REQUEST: OpenApiResponse(
-                description='Invalid quantity or insufficient stock.',
+                description="Invalid quantity or insufficient stock.",
             ),
             status.HTTP_404_NOT_FOUND: OpenApiResponse(
-                description='Cart item not found.',
+                description="Cart item not found.",
             ),
         },
         examples=[
             OpenApiExample(
-                'Update cart item request',
-                value={'quantity': 3},
+                "Update cart item request",
+                value={"quantity": 3},
                 request_only=True,
             ),
             OpenApiExample(
-                'Update cart item response',
+                "Update cart item response",
                 value={
-                    'id': 10,
-                    'product_variant_id': 3,
-                    'product_name': 'TechBook Pro 14',
-                    'variant_label': 'Space Gray, 512GB, 16GB',
-                    'quantity': 3,
-                    'unit_price': '1299.00',
-                    'line_total': '3897.00',
+                    "id": 10,
+                    "product_variant_id": 3,
+                    "product_name": "TechBook Pro 14",
+                    "variant_label": "Space Gray, 512GB, 16GB",
+                    "quantity": 3,
+                    "unit_price": "1299.00",
+                    "line_total": "3897.00",
                 },
                 response_only=True,
             ),
@@ -151,29 +151,29 @@ class CartItemDetailView(APIView):
             item = CartService.update_item_for_cart(
                 cart=cart,
                 item_id=item_id,
-                quantity=serializer.validated_data['quantity'],
+                quantity=serializer.validated_data["quantity"],
             )
         except ValueError as exc:
             return Response(
-                {'quantity': [str(exc)]},
+                {"quantity": [str(exc)]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if item is None:
             return Response(
-                {'detail': 'Cart item not found.'},
+                {"detail": "Cart item not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         return Response(CartItemSerializer(item).data)
 
     @extend_schema(
-        tags=['Cart'],
+        tags=["Cart"],
         responses={
             status.HTTP_204_NO_CONTENT: OpenApiResponse(
-                description='Cart item removed.',
+                description="Cart item removed.",
             ),
             status.HTTP_404_NOT_FOUND: OpenApiResponse(
-                description='Cart item not found.',
+                description="Cart item not found.",
             ),
         },
     )
@@ -181,7 +181,7 @@ class CartItemDetailView(APIView):
         cart = CartService.get_or_create_cart(request)
         if not CartService.remove_item_from_cart(cart, item_id):
             return Response(
-                {'detail': 'Cart item not found.'},
+                {"detail": "Cart item not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 

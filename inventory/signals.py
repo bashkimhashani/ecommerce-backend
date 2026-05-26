@@ -12,10 +12,14 @@ def remember_previous_inventory_quantity(sender, instance, **kwargs):
         instance._previous_low_stock_threshold = None
         return
 
-    previous = Inventory.all_objects.filter(pk=instance.pk).only(
-        'quantity',
-        'low_stock_threshold',
-    ).first()
+    previous = (
+        Inventory.all_objects.filter(pk=instance.pk)
+        .only(
+            "quantity",
+            "low_stock_threshold",
+        )
+        .first()
+    )
 
     instance._previous_quantity = previous.quantity if previous else None
     instance._previous_low_stock_threshold = (
@@ -28,10 +32,10 @@ def queue_low_stock_alert(sender, instance, created, **kwargs):
     if created:
         return
 
-    previous_quantity = getattr(instance, '_previous_quantity', None)
+    previous_quantity = getattr(instance, "_previous_quantity", None)
     previous_threshold = getattr(
         instance,
-        '_previous_low_stock_threshold',
+        "_previous_low_stock_threshold",
         None,
     )
 

@@ -14,51 +14,51 @@ class TenantRegisterView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        tags=['Tenants'],
+        tags=["Tenants"],
         request=TenantRegistrationSerializer,
         responses={
             status.HTTP_201_CREATED: OpenApiResponse(
-                description='Tenant, owner user, and JWT pair.',
+                description="Tenant, owner user, and JWT pair.",
             ),
             status.HTTP_400_BAD_REQUEST: OpenApiResponse(
-                description='Validation errors.',
+                description="Validation errors.",
             ),
         },
         examples=[
             OpenApiExample(
-                'Tenant registration request',
+                "Tenant registration request",
                 value={
-                    'name': 'Acme Store',
-                    'slug': 'acme-store',
-                    'domain': 'acme.example.com',
-                    'plan': 'basic',
-                    'email': 'owner@example.com',
-                    'first_name': 'Store',
-                    'last_name': 'Owner',
-                    'password': 'StrongPass123!',
-                    'phone': '+38344123456',
+                    "name": "Acme Store",
+                    "slug": "acme-store",
+                    "domain": "acme.example.com",
+                    "plan": "basic",
+                    "email": "owner@example.com",
+                    "first_name": "Store",
+                    "last_name": "Owner",
+                    "password": "StrongPass123!",
+                    "phone": "+38344123456",
                 },
                 request_only=True,
             ),
             OpenApiExample(
-                'Tenant registration response',
+                "Tenant registration response",
                 value={
-                    'tenant': {
-                        'id': 1,
-                        'name': 'Acme Store',
-                        'slug': 'acme-store',
-                        'domain': 'acme.example.com',
-                        'owner': 1,
-                        'plan': 'basic',
-                        'is_active': True,
+                    "tenant": {
+                        "id": 1,
+                        "name": "Acme Store",
+                        "slug": "acme-store",
+                        "domain": "acme.example.com",
+                        "owner": 1,
+                        "plan": "basic",
+                        "is_active": True,
                     },
-                    'user': {
-                        'id': 1,
-                        'email': 'owner@example.com',
-                        'role': 'vendor_admin',
+                    "user": {
+                        "id": 1,
+                        "email": "owner@example.com",
+                        "role": "vendor_admin",
                     },
-                    'access': 'eyJhbGciOi...',
-                    'refresh': 'eyJhbGciOi...',
+                    "access": "eyJhbGciOi...",
+                    "refresh": "eyJhbGciOi...",
                 },
                 response_only=True,
             ),
@@ -68,12 +68,15 @@ class TenantRegisterView(APIView):
         serializer = TenantRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             result = TenantRegistrationService.register(serializer)
-            return Response({
-                'tenant': TenantSerializer(result['tenant']).data,
-                'user': UserSerializer(result['user']).data,
-                'access': result['access'],
-                'refresh': result['refresh'],
-            }, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    "tenant": TenantSerializer(result["tenant"]).data,
+                    "user": UserSerializer(result["user"]).data,
+                    "access": result["access"],
+                    "refresh": result["refresh"],
+                },
+                status=status.HTTP_201_CREATED,
+            )
         return Response(
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST,

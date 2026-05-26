@@ -5,9 +5,9 @@ from tenants.mixins import TenantModel
 
 class EmailLog(TenantModel):
     class Status(models.TextChoices):
-        SENT = 'sent', 'Sent'
-        FAILED = 'failed', 'Failed'
-        SKIPPED = 'skipped', 'Skipped'
+        SENT = "sent", "Sent"
+        FAILED = "failed", "Failed"
+        SKIPPED = "skipped", "Skipped"
 
     task_name = models.CharField(max_length=255, db_index=True)
     recipient = models.EmailField(blank=True)
@@ -23,20 +23,20 @@ class EmailLog(TenantModel):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
             models.Index(
-                fields=['tenant', 'status'],
-                name='notificatio_tenant__16ab8d_idx',
+                fields=["tenant", "status"],
+                name="notificatio_tenant__16ab8d_idx",
             ),
             models.Index(
-                fields=['task_name', 'status'],
-                name='notificatio_task_na_4d5b17_idx',
+                fields=["task_name", "status"],
+                name="notificatio_task_na_4d5b17_idx",
             ),
         ]
 
     def __str__(self):
-        return f'{self.task_name} -> {self.recipient} ({self.status})'
+        return f"{self.task_name} -> {self.recipient} ({self.status})"
 
 
 class FailedTask(TenantModel):
@@ -47,17 +47,17 @@ class FailedTask(TenantModel):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
             models.Index(
-                fields=['task_name'],
-                name='notificatio_task_na_b4caca_idx',
+                fields=["task_name"],
+                name="notificatio_task_na_b4caca_idx",
             ),
             models.Index(
-                fields=['tenant', 'task_name'],
-                name='notificatio_tenant__6d4647_idx',
+                fields=["tenant", "task_name"],
+                name="notificatio_tenant__6d4647_idx",
             ),
         ]
 
     def __str__(self):
-        return f'{self.task_name} failed at {self.created_at}'
+        return f"{self.task_name} failed at {self.created_at}"
