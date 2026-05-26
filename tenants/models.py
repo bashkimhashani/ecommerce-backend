@@ -5,9 +5,9 @@ from django.conf import settings
 class Tenant(models.Model):
 
     PLAN_CHOICES = [
-        ('free', 'Free'),
-        ('basic', 'Basic'),
-        ('premium', 'Premium'),
+        ("free", "Free"),
+        ("basic", "Basic"),
+        ("premium", "Premium"),
     ]
 
     name = models.CharField(max_length=255)
@@ -18,13 +18,9 @@ class Tenant(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='owned_tenants'
+        related_name="owned_tenants",
     )
-    plan = models.CharField(
-        max_length=20,
-        choices=PLAN_CHOICES,
-        default='free'
-    )
+    plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default="free")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

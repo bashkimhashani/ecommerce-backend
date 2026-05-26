@@ -8,12 +8,12 @@ class TenantRegistrationService:
 
     @staticmethod
     def build_registration_response(result):
-        user = result['user']
-        tenant = result['tenant']
+        user = result["user"]
+        tenant = result["tenant"]
         refresh = CustomTokenObtainPairSerializer.get_token(user)
         return {
-            'tenant': tenant,
-            'user': user,
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
+            "tenant": tenant,
+            "user": user,
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
         }

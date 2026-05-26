@@ -36,22 +36,22 @@ class CheckoutSessionService:
         cart = CartService.get_or_create_cart(request)
         if not cart.items.exists():
             raise ValueError(
-                'Cannot create checkout session for an empty cart.',
+                "Cannot create checkout session for an empty cart.",
             )
 
         checkout_session, created = CheckoutSession.objects.get_or_create(
             tenant=cart.tenant,
-            idempotency_key=data['idempotency_key'],
+            idempotency_key=data["idempotency_key"],
             defaults={
-                'user': request.user,
-                'cart': cart,
-                'shipping_address': data.get('shipping_address', {}),
+                "user": request.user,
+                "cart": cart,
+                "shipping_address": data.get("shipping_address", {}),
             },
         )
 
         if checkout_session.user_id != request.user.id:
             raise CheckoutSessionConflictError(
-                'Idempotency key is already in use.',
+                "Idempotency key is already in use.",
             )
 
         return checkout_session, created
@@ -63,13 +63,13 @@ class CheckoutSessionService:
             user=user,
         ).first()
         if checkout_session is None:
-            raise CheckoutSessionNotFoundError('Checkout session not found.')
+            raise CheckoutSessionNotFoundError("Checkout session not found.")
 
         checkout_session.shipping_address = shipping_address
-        update_fields = ['shipping_address', 'updated_at']
+        update_fields = ["shipping_address", "updated_at"]
         if checkout_session.status == CheckoutSession.Status.PENDING:
             checkout_session.status = CheckoutSession.Status.READY
-            update_fields.append('status')
+            update_fields.append("status")
 
         checkout_session.save(update_fields=update_fields)
         return checkout_session
@@ -81,33 +81,37 @@ class CheckoutSessionService:
             checkout_session,
         )
         return {
-            'payment_intent_id': stripe_value(payment_intent, 'id'),
-            'client_secret': stripe_value(payment_intent, 'client_secret'),
-            'amount': stripe_value(payment_intent, 'amount'),
-            'currency': stripe_value(payment_intent, 'currency'),
+            "payment_intent_id": stripe_value(payment_intent, "id"),
+            "client_secret": stripe_value(payment_intent, "client_secret"),
+            "amount": stripe_value(payment_intent, "amount"),
+            "currency": stripe_value(payment_intent, "currency"),
         }
 
     @staticmethod
     def get_ready_payment_session(user, session_id):
-        checkout_session = CheckoutSession.objects.select_related(
-            'cart',
-            'user',
-        ).filter(
-            pk=session_id,
-            user=user,
-        ).first()
+        checkout_session = (
+            CheckoutSession.objects.select_related(
+                "cart",
+                "user",
+            )
+            .filter(
+                pk=session_id,
+                user=user,
+            )
+            .first()
+        )
         if checkout_session is None:
-            raise CheckoutSessionNotFoundError('Checkout session not found.')
+            raise CheckoutSessionNotFoundError("Checkout session not found.")
 
         if checkout_session.status != CheckoutSession.Status.READY:
-            raise ValueError('Checkout session must be ready for payment.')
+            raise ValueError("Checkout session must be ready for payment.")
 
         if not checkout_session.shipping_address:
-            raise ValueError('Shipping address is required before payment.')
+            raise ValueError("Shipping address is required before payment.")
 
         if not checkout_session.cart.items.exists():
             raise ValueError(
-                'Cannot create payment intent for an empty cart.',
+                "Cannot create payment intent for an empty cart.",
             )
 
         return checkout_session
@@ -117,7 +121,7 @@ class CheckoutSessionService:
         webhook_secret = settings.STRIPE_WEBHOOK_SECRET
         if not webhook_secret:
             raise StripeConfigurationError(
-                'Stripe webhook secret is not configured.',
+                "Stripe webhook secret is not configured.",
             )
 
         event = stripe.Webhook.construct_event(
@@ -126,10 +130,10 @@ class CheckoutSessionService:
             secret=webhook_secret,
         )
         order = StripeWebhookService.handle_event(event)
-        response_data = {'received': True}
+        response_data = {"received": True}
         if order is not None:
-            response_data['order_number'] = order.order_number
-            response_data['order_status'] = order.status
+            response_data["order_number"] = order.order_number
+            response_data["order_status"] = order.status
         return response_data
 
 
@@ -137,51 +141,51 @@ class PaymentIntentService:
     @classmethod
     def create_for_checkout(cls, checkout_session):
         if not settings.STRIPE_SECRET_KEY:
-            raise StripeConfigurationError('Stripe secret key is not configured.')
+            raise StripeConfigurationError("Stripe secret key is not configured.")
 
         cart = checkout_session.cart
         amount = cls._amount_to_cents(cart.subtotal)
         if amount < 1:
-            raise ValueError('Payment amount must be greater than zero.')
+            raise ValueError("Payment amount must be greater than zero.")
 
         return stripe.PaymentIntent.create(
             amount=amount,
-            currency='usd',
+            currency="usd",
             automatic_payment_methods={
-                'enabled': True,
+                "enabled": True,
             },
             metadata={
-                'checkout_session_id': str(checkout_session.id),
-                'cart_id': str(cart.id),
-                'user_id': str(checkout_session.user_id),
-                'tenant_id': str(checkout_session.tenant_id),
+                "checkout_session_id": str(checkout_session.id),
+                "cart_id": str(cart.id),
+                "user_id": str(checkout_session.user_id),
+                "tenant_id": str(checkout_session.tenant_id),
             },
-            idempotency_key=f'checkout-session-{checkout_session.id}',
+            idempotency_key=f"checkout-session-{checkout_session.id}",
         )
 
     @staticmethod
     def _amount_to_cents(amount):
-        cents = Decimal(amount) * Decimal('100')
-        return int(cents.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        cents = Decimal(amount) * Decimal("100")
+        return int(cents.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 class StripeWebhookService:
     @classmethod
     def handle_event(cls, event):
-        event_type = stripe_value(event, 'type')
-        if event_type != 'payment_intent.succeeded':
+        event_type = stripe_value(event, "type")
+        if event_type != "payment_intent.succeeded":
             return None
 
-        payment_intent = stripe_value(stripe_value(event, 'data'), 'object')
+        payment_intent = stripe_value(stripe_value(event, "data"), "object")
         return cls.handle_payment_intent_succeeded(payment_intent)
 
     @classmethod
     def handle_payment_intent_succeeded(cls, payment_intent):
-        metadata = stripe_value(payment_intent, 'metadata') or {}
-        checkout_session_id = stripe_value(metadata, 'checkout_session_id')
+        metadata = stripe_value(payment_intent, "metadata") or {}
+        checkout_session_id = stripe_value(metadata, "checkout_session_id")
         if not checkout_session_id:
             raise ValueError(
-                'Missing checkout_session_id in payment metadata.',
+                "Missing checkout_session_id in payment metadata.",
             )
 
         try:
@@ -189,11 +193,11 @@ class StripeWebhookService:
                 pk=checkout_session_id,
             )
         except CheckoutSession.DoesNotExist as exc:
-            raise ObjectDoesNotExist('Checkout session not found.') from exc
+            raise ObjectDoesNotExist("Checkout session not found.") from exc
         order = OrderCreationService.create_from_checkout(checkout_session)
         if order.status == Order.Status.PENDING:
             order.confirm()
-            order.save(update_fields=['status', 'updated_at'])
+            order.save(update_fields=["status", "updated_at"])
 
         return order
 
@@ -204,7 +208,7 @@ class OrderCreationService:
     def create_from_checkout(cls, checkout_session):
         checkout_session = (
             CheckoutSession.objects.select_for_update()
-            .select_related('cart', 'user')
+            .select_related("cart", "user")
             .get(pk=checkout_session.pk)
         )
 
@@ -219,12 +223,12 @@ class OrderCreationService:
         )
         cart_items = list(
             CartItem.objects.select_for_update()
-            .select_related('product_variant__product')
+            .select_related("product_variant__product")
             .filter(cart=cart)
         )
 
         if not cart_items:
-            raise ValueError('Cannot create an order from an empty cart.')
+            raise ValueError("Cannot create an order from an empty cart.")
 
         order = Order.objects.create(
             user=checkout_session.user,
@@ -250,7 +254,7 @@ class OrderCreationService:
             )
 
         checkout_session.status = CheckoutSession.Status.COMPLETED
-        checkout_session.save(update_fields=['status', 'updated_at'])
+        checkout_session.save(update_fields=["status", "updated_at"])
 
         cls._clear_cart(cart)
         transaction.on_commit(
@@ -261,40 +265,44 @@ class OrderCreationService:
     @staticmethod
     def _clear_cart(cart):
         cart.status = Cart.Status.CHECKED_OUT
-        cart.save(update_fields=['status', 'updated_at'])
+        cart.save(update_fields=["status", "updated_at"])
         cart.items.all().delete()
 
     @staticmethod
     def _lock_product_variant(cart_item):
-        return type(
-            cart_item.product_variant,
-        ).objects.select_for_update().get(pk=cart_item.product_variant_id)
+        return (
+            type(
+                cart_item.product_variant,
+            )
+            .objects.select_for_update()
+            .get(pk=cart_item.product_variant_id)
+        )
 
     @staticmethod
     def _decrement_stock(product_variant, quantity):
         next_stock_quantity = product_variant.stock_quantity - quantity
         if next_stock_quantity < 0:
             raise InsufficientStockError(
-                'Requested quantity exceeds available stock.',
+                "Requested quantity exceeds available stock.",
             )
 
         product_variant.stock_quantity = next_stock_quantity
-        product_variant.save(update_fields=['stock_quantity'])
+        product_variant.save(update_fields=["stock_quantity"])
 
     @staticmethod
     def _product_name(cart_item):
-        product = getattr(cart_item.product_variant, 'product', None)
-        return getattr(product, 'name', '')
+        product = getattr(cart_item.product_variant, "product", None)
+        return getattr(product, "name", "")
 
     @staticmethod
     def _variant_label(cart_item):
         product_variant = cart_item.product_variant
         variant_options = [
-            getattr(product_variant, 'color', ''),
-            getattr(product_variant, 'storage', ''),
-            getattr(product_variant, 'ram', ''),
+            getattr(product_variant, "color", ""),
+            getattr(product_variant, "storage", ""),
+            getattr(product_variant, "ram", ""),
         ]
-        return ', '.join(option for option in variant_options if option)
+        return ", ".join(option for option in variant_options if option)
 
 
 def stripe_value(value, key):

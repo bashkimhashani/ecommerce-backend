@@ -11,12 +11,12 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id',
-            'name',
-            'slug',
-            'icon_url',
-            'is_active',
-            'children',
+            "id",
+            "name",
+            "slug",
+            "icon_url",
+            "is_active",
+            "children",
         ]
 
     def get_children(self, obj):
@@ -31,7 +31,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
 
 class ProductListSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(
-        source='base_price',
+        source="base_price",
         max_digits=10,
         decimal_places=2,
     )
@@ -42,13 +42,13 @@ class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id',
-            'name',
-            'slug',
-            'price',
-            'vendor',
-            'thumbnail',
-            'avg_rating',
+            "id",
+            "name",
+            "slug",
+            "price",
+            "vendor",
+            "thumbnail",
+            "avg_rating",
         ]
 
     def get_vendor(self, obj):
@@ -60,10 +60,7 @@ class ProductListSerializer(serializers.ModelSerializer):
 
     def get_thumbnail(self, obj):
         primary_image = next(
-            (
-                image for image in obj.images.all()
-                if image.is_primary
-            ),
+            (image for image in obj.images.all() if image.is_primary),
             None,
         )
         if primary_image is None:
@@ -71,38 +68,38 @@ class ProductListSerializer(serializers.ModelSerializer):
         if primary_image is None or not primary_image.thumbnail:
             return None
 
-        request = self.context.get('request')
+        request = self.context.get("request")
         thumbnail_url = primary_image.thumbnail.url
         if request:
             return request.build_absolute_uri(thumbnail_url)
         return thumbnail_url
 
     def get_avg_rating(self, obj):
-        return getattr(obj, 'avg_rating', None)
+        return getattr(obj, "avg_rating", None)
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
         fields = [
-            'id',
-            'image',
-            'thumbnail',
-            'medium',
-            'large',
-            'alt_text',
-            'sort_order',
-            'is_primary',
-            'created_at',
-            'updated_at',
+            "id",
+            "image",
+            "thumbnail",
+            "medium",
+            "large",
+            "alt_text",
+            "sort_order",
+            "is_primary",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            'id',
-            'thumbnail',
-            'medium',
-            'large',
-            'created_at',
-            'updated_at',
+            "id",
+            "thumbnail",
+            "medium",
+            "large",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -110,11 +107,11 @@ class BrandSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = Brand
         fields = [
-            'id',
-            'name',
-            'slug',
-            'logo',
-            'country_of_origin',
+            "id",
+            "name",
+            "slug",
+            "logo",
+            "country_of_origin",
         ]
 
 
@@ -122,10 +119,10 @@ class CategorySummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id',
-            'name',
-            'slug',
-            'icon_url',
+            "id",
+            "name",
+            "slug",
+            "icon_url",
         ]
 
 
@@ -133,10 +130,10 @@ class VendorSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = VendorProfile
         fields = [
-            'id',
-            'store_name',
-            'logo',
-            'rating',
+            "id",
+            "store_name",
+            "logo",
+            "rating",
         ]
 
 
@@ -144,18 +141,18 @@ class ProductVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductVariant
         fields = [
-            'id',
-            'color',
-            'storage',
-            'ram',
-            'variant_price',
-            'stock_quantity',
+            "id",
+            "color",
+            "storage",
+            "ram",
+            "variant_price",
+            "stock_quantity",
         ]
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
     price = serializers.DecimalField(
-        source='base_price',
+        source="base_price",
         max_digits=10,
         decimal_places=2,
     )
@@ -164,82 +161,82 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     vendor = VendorSummarySerializer(read_only=True)
     variants = ProductVariantSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
-    specs = serializers.JSONField(source='tech_specs')
+    specs = serializers.JSONField(source="tech_specs")
     avg_rating = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
-            'id',
-            'name',
-            'slug',
-            'sku',
-            'brand',
-            'category',
-            'vendor',
-            'status',
-            'price',
-            'specs',
-            'variants',
-            'images',
-            'avg_rating',
-            'created_at',
-            'updated_at',
+            "id",
+            "name",
+            "slug",
+            "sku",
+            "brand",
+            "category",
+            "vendor",
+            "status",
+            "price",
+            "specs",
+            "variants",
+            "images",
+            "avg_rating",
+            "created_at",
+            "updated_at",
         ]
 
     def get_avg_rating(self, obj):
-        return getattr(obj, 'avg_rating', None)
+        return getattr(obj, "avg_rating", None)
 
 
 class ProductCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id',
-            'name',
-            'slug',
-            'sku',
-            'brand',
-            'category',
-            'status',
-            'base_price',
-            'tech_specs',
-            'created_at',
-            'updated_at',
+            "id",
+            "name",
+            "slug",
+            "sku",
+            "brand",
+            "category",
+            "status",
+            "base_price",
+            "tech_specs",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            'id',
-            'created_at',
-            'updated_at',
+            "id",
+            "created_at",
+            "updated_at",
         ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        request = self.context.get('request')
-        tenant = getattr(getattr(request, 'user', None), 'tenant', None)
+        request = self.context.get("request")
+        tenant = getattr(getattr(request, "user", None), "tenant", None)
 
         if tenant:
-            self.fields['brand'].queryset = Brand.all_objects.filter(
+            self.fields["brand"].queryset = Brand.all_objects.filter(
                 tenant=tenant,
             )
-            self.fields['category'].queryset = Category.all_objects.filter(
+            self.fields["category"].queryset = Category.all_objects.filter(
                 tenant=tenant,
             )
         else:
-            self.fields['brand'].queryset = Brand.all_objects.none()
-            self.fields['category'].queryset = Category.all_objects.none()
+            self.fields["brand"].queryset = Brand.all_objects.none()
+            self.fields["category"].queryset = Category.all_objects.none()
 
     def validate(self, attrs):
-        request = self.context.get('request')
-        tenant = getattr(getattr(request, 'user', None), 'tenant', None)
+        request = self.context.get("request")
+        tenant = getattr(getattr(request, "user", None), "tenant", None)
 
         if tenant is None:
             raise serializers.ValidationError(
-                'A tenant is required to create products.',
+                "A tenant is required to create products.",
             )
 
-        slug = attrs.get('slug')
-        sku = attrs.get('sku')
+        slug = attrs.get("slug")
+        sku = attrs.get("sku")
         errors = {}
 
         slug_exists = Product.all_objects.filter(
@@ -256,10 +253,10 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             sku_exists = sku_exists.exclude(id=self.instance.id)
 
         if slug and slug_exists.exists():
-            errors['slug'] = 'A product with this slug already exists.'
+            errors["slug"] = "A product with this slug already exists."
 
         if sku and sku_exists.exists():
-            errors['sku'] = 'A product with this SKU already exists.'
+            errors["sku"] = "A product with this SKU already exists."
 
         if errors:
             raise serializers.ValidationError(errors)

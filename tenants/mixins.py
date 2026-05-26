@@ -13,11 +13,11 @@ class TenantAwareManager(models.Manager):
 
 class TenantModel(models.Model):
     tenant = models.ForeignKey(
-        'tenants.Tenant',
+        "tenants.Tenant",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name='%(class)s_set'
+        related_name="%(class)s_set",
     )
 
     objects = TenantAwareManager()

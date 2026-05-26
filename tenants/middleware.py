@@ -1,12 +1,10 @@
-from django.http import JsonResponse
-from .models import Tenant
 import threading
 
 _thread_locals = threading.local()
 
 
 def get_current_tenant():
-    return getattr(_thread_locals, 'tenant', None)
+    return getattr(_thread_locals, "tenant", None)
 
 
 class TenantMiddleware:
@@ -28,7 +26,7 @@ class TenantMiddleware:
         try:
             response = self.get_response(request)
         finally:
-            if hasattr(_thread_locals, 'tenant'):
-                delattr(_thread_locals, 'tenant')
+            if hasattr(_thread_locals, "tenant"):
+                delattr(_thread_locals, "tenant")
 
         return response

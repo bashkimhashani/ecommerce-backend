@@ -8,10 +8,10 @@ from .models import Inventory
 @shared_task(autoretry_for=(Exception,), retry_backoff=True)
 def send_low_stock_alert(inventory_id):
     inventory = Inventory.all_objects.select_related(
-        'vendor',
-        'vendor__user',
-        'product_variant',
-        'product_variant__product',
+        "vendor",
+        "vendor__user",
+        "product_variant",
+        "product_variant__product",
     ).get(pk=inventory_id)
     product = inventory.product_variant.product
     recipients = []
@@ -25,26 +25,26 @@ def send_low_stock_alert(inventory_id):
 
     if not recipients:
         return {
-            'inventory_id': inventory.id,
-            'status': 'skipped',
-            'reason': 'No vendor email recipient configured.',
+            "inventory_id": inventory.id,
+            "status": "skipped",
+            "reason": "No vendor email recipient configured.",
         }
 
     send_mail(
-        subject=f'Low stock alert: {product.name}',
+        subject=f"Low stock alert: {product.name}",
         message=(
-            f'{product.name} is below its low stock threshold.\n\n'
-            f'Current quantity: {inventory.quantity}\n'
-            f'Low stock threshold: {inventory.low_stock_threshold}\n'
-            f'Variant: {inventory.product_variant}'
+            f"{product.name} is below its low stock threshold.\n\n"
+            f"Current quantity: {inventory.quantity}\n"
+            f"Low stock threshold: {inventory.low_stock_threshold}\n"
+            f"Variant: {inventory.product_variant}"
         ),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
         recipient_list=recipients,
         fail_silently=False,
     )
 
     return {
-        'inventory_id': inventory.id,
-        'status': 'sent',
-        'recipients': recipients,
+        "inventory_id": inventory.id,
+        "status": "sent",
+        "recipients": recipients,
     }

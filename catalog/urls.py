@@ -10,41 +10,40 @@ from .views import (
     ProductSearchView,
 )
 
-
 urlpatterns = [
     path(
-        'categories/tree/',
+        "categories/tree/",
         CategoryTreeView.as_view(),
-        name='category-tree',
+        name="category-tree",
     ),
     path(
-        'autocomplete/',
+        "autocomplete/",
         ProductAutocompleteView.as_view(),
-        name='product-autocomplete',
+        name="product-autocomplete",
     ),
     path(
-        'products/',
+        "products/",
         ProductListView.as_view(),
-        name='product-list',
+        name="product-list",
     ),
     path(
-        'products/search/',
+        "products/search/",
         ProductSearchView.as_view(),
-        name='product-search',
+        name="product-search",
     ),
     path(
-        'products/<slug:slug>/',
+        "products/<slug:slug>/",
         ProductDetailView.as_view(),
-        name='product-detail',
+        name="product-detail",
     ),
     path(
-        'products/<slug:slug>/images/',
+        "products/<slug:slug>/images/",
         ProductImageUploadView.as_view(),
-        name='product-image-upload',
+        name="product-image-upload",
     ),
     path(
-        'products/<slug:slug>/images/<int:image_id>/',
+        "products/<slug:slug>/images/<int:image_id>/",
         ProductImageDeleteView.as_view(),
-        name='product-image-delete',
+        name="product-image-delete",
     ),
 ]

@@ -2,5 +2,5 @@ from django.apps import AppConfig
 
 
 class RequestLogsConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'request_logs'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "request_logs"
