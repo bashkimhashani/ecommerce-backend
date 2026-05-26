@@ -13,27 +13,27 @@ from .tasks import send_order_status_email
 
 
 def generate_order_number():
-    return f'ORD-{uuid.uuid4().hex[:12].upper()}'
+    return f"ORD-{uuid.uuid4().hex[:12].upper()}"
 
 
 class Order(TenantModel):
     class Status(models.TextChoices):
-        PENDING = 'pending', 'Pending'
-        CONFIRMED = 'confirmed', 'Confirmed'
-        PROCESSING = 'processing', 'Processing'
-        SHIPPED = 'shipped', 'Shipped'
-        DELIVERED = 'delivered', 'Delivered'
-        CANCELLED = 'cancelled', 'Cancelled'
+        PENDING = "pending", "Pending"
+        CONFIRMED = "confirmed", "Confirmed"
+        PROCESSING = "processing", "Processing"
+        SHIPPED = "shipped", "Shipped"
+        DELIVERED = "delivered", "Delivered"
+        CANCELLED = "cancelled", "Cancelled"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
-        related_name='orders',
+        related_name="orders",
     )
     checkout_session = models.OneToOneField(
-        'checkout.CheckoutSession',
+        "checkout.CheckoutSession",
         on_delete=models.PROTECT,
-        related_name='order',
+        related_name="order",
     )
     order_number = models.CharField(
         max_length=32,
@@ -55,19 +55,19 @@ class Order(TenantModel):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
             models.Index(
-                fields=['tenant', 'status'],
-                name='orders_orde_tenant__b18f3e_idx',
+                fields=["tenant", "status"],
+                name="orders_orde_tenant__b18f3e_idx",
             ),
             models.Index(
-                fields=['user', 'status'],
-                name='orders_orde_user_id_75d6ea_idx',
+                fields=["user", "status"],
+                name="orders_orde_user_id_75d6ea_idx",
             ),
             models.Index(
-                fields=['order_number'],
-                name='orders_orde_order_n_0fb8b4_idx',
+                fields=["order_number"],
+                name="orders_orde_order_n_0fb8b4_idx",
             ),
         ]
 
@@ -104,12 +104,12 @@ class OrderItem(TenantModel):
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
-        related_name='items',
+        related_name="items",
     )
     product_variant = models.ForeignKey(
-        'catalog.ProductVariant',
+        "catalog.ProductVariant",
         on_delete=models.PROTECT,
-        related_name='order_items',
+        related_name="order_items",
     )
     product_name = models.CharField(max_length=255)
     variant_label = models.CharField(max_length=255, blank=True)
@@ -119,15 +119,15 @@ class OrderItem(TenantModel):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['created_at']
+        ordering = ["created_at"]
         indexes = [
             models.Index(
-                fields=['tenant', 'order'],
-                name='orders_orde_tenant__e8f030_idx',
+                fields=["tenant", "order"],
+                name="orders_orde_tenant__e8f030_idx",
             ),
             models.Index(
-                fields=['tenant', 'product_variant'],
-                name='orders_orde_tenant__5eb05b_idx',
+                fields=["tenant", "product_variant"],
+                name="orders_orde_tenant__5eb05b_idx",
             ),
         ]
 
@@ -137,14 +137,14 @@ class OrderItem(TenantModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.quantity} x {self.product_name}'
+        return f"{self.quantity} x {self.product_name}"
 
 
 class OrderEvent(TenantModel):
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
-        related_name='events',
+        related_name="events",
     )
     from_status = models.CharField(max_length=20, blank=True)
     to_status = models.CharField(max_length=20)
@@ -154,19 +154,19 @@ class OrderEvent(TenantModel):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['created_at']
+        ordering = ["created_at"]
         indexes = [
             models.Index(
-                fields=['tenant', 'order'],
-                name='orders_orde_tenant__ffc56c_idx',
+                fields=["tenant", "order"],
+                name="orders_orde_tenant__ffc56c_idx",
             ),
             models.Index(
-                fields=['tenant', 'to_status'],
-                name='orders_orde_tenant__5c4b3d_idx',
+                fields=["tenant", "to_status"],
+                name="orders_orde_tenant__5c4b3d_idx",
             ),
             models.Index(
-                fields=['created_at'],
-                name='orders_orde_created_e6ae50_idx',
+                fields=["created_at"],
+                name="orders_orde_created_e6ae50_idx",
             ),
         ]
 
@@ -176,7 +176,7 @@ class OrderEvent(TenantModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.order} {self.from_status} -> {self.to_status}'
+        return f"{self.order} {self.from_status} -> {self.to_status}"
 
 
 @receiver(post_transition, sender=Order)
@@ -186,7 +186,7 @@ def create_order_event(sender, instance, name, source, target, **kwargs):
 
     OrderEvent.objects.create(
         order=instance,
-        from_status=source or '',
+        from_status=source or "",
         to_status=target,
         transition=name,
         tenant=instance.tenant,

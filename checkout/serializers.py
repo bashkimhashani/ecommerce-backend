@@ -39,15 +39,17 @@ class CheckoutSessionCreateSerializer(serializers.Serializer):
         return serializer.validated_data
 
     def validate(self, attrs):
-        idempotency_key = attrs.get('idempotency_key') or self.context.get(
-            'idempotency_key',
+        idempotency_key = attrs.get("idempotency_key") or self.context.get(
+            "idempotency_key",
         )
         if not idempotency_key:
-            raise serializers.ValidationError({
-                'idempotency_key': 'This field is required.',
-            })
+            raise serializers.ValidationError(
+                {
+                    "idempotency_key": "This field is required.",
+                }
+            )
 
-        attrs['idempotency_key'] = idempotency_key
+        attrs["idempotency_key"] = idempotency_key
         return attrs
 
 
@@ -57,11 +59,11 @@ class CheckoutSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = CheckoutSession
         fields = [
-            'id',
-            'cart_id',
-            'idempotency_key',
-            'shipping_address',
-            'status',
-            'created_at',
-            'updated_at',
+            "id",
+            "cart_id",
+            "idempotency_key",
+            "shipping_address",
+            "status",
+            "created_at",
+            "updated_at",
         ]

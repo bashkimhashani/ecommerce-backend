@@ -4,11 +4,10 @@ from django.dispatch import receiver
 
 from .models import User
 
-
 ROLE_GROUPS = {
-    'vendor_admin',
-    'store_staff',
-    'customer',
+    "vendor_admin",
+    "store_staff",
+    "customer",
 }
 
 

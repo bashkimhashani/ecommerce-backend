@@ -15,7 +15,6 @@ from .tasks import send_email_verification_email
 from .token_blacklist import blacklist_token_in_redis
 from .tokens import email_verification_token_generator
 
-
 User = get_user_model()
 
 
@@ -24,14 +23,14 @@ class AuthService:
     def token_pair_for_user(user):
         refresh = CustomTokenObtainPairSerializer.get_token(user)
         return {
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
         }
 
     @staticmethod
     def merge_guest_cart(request, user):
-        session = getattr(request, 'session', None)
-        session_key = getattr(session, 'session_key', None)
+        session = getattr(request, "session", None)
+        session_key = getattr(session, "session_key", None)
         if not session_key:
             return
 
@@ -42,7 +41,7 @@ class AuthService:
         if not guest_cart:
             return
 
-        tenant = getattr(request, 'tenant', None) or user.tenant
+        tenant = getattr(request, "tenant", None) or user.tenant
         user_cart = CartService.get_or_create_cart(
             SimpleNamespace(user=user, tenant=tenant),
         )
@@ -67,7 +66,7 @@ class AuthService:
             return False
 
         user.is_email_verified = True
-        user.save(update_fields=['is_email_verified'])
+        user.save(update_fields=["is_email_verified"])
         return True
 
     @staticmethod
@@ -92,7 +91,7 @@ class AuthService:
     @staticmethod
     def reset_password(user, new_password):
         user.set_password(new_password)
-        user.save(update_fields=['password'])
+        user.save(update_fields=["password"])
 
     @staticmethod
     def update_profile(serializer):

@@ -14,14 +14,14 @@ class RequestLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['created_at']),
-            models.Index(fields=['status_code']),
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["status_code"]),
         ]
 
     def __str__(self):
         return (
-            f'{self.method} {self.path} '
-            f'{self.status_code} {self.response_time_ms}ms'
+            f"{self.method} {self.path} "
+            f"{self.status_code} {self.response_time_ms}ms"
         )

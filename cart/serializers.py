@@ -17,27 +17,27 @@ class CartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem
         fields = [
-            'id',
-            'product_variant_id',
-            'product_name',
-            'variant_label',
-            'quantity',
-            'unit_price',
-            'line_total',
+            "id",
+            "product_variant_id",
+            "product_name",
+            "variant_label",
+            "quantity",
+            "unit_price",
+            "line_total",
         ]
 
     def get_product_name(self, obj):
-        product = getattr(obj.product_variant, 'product', None)
-        return getattr(product, 'name', '')
+        product = getattr(obj.product_variant, "product", None)
+        return getattr(product, "name", "")
 
     def get_variant_label(self, obj):
         variant = obj.product_variant
         options = [
-            getattr(variant, 'color', ''),
-            getattr(variant, 'storage', ''),
-            getattr(variant, 'ram', ''),
+            getattr(variant, "color", ""),
+            getattr(variant, "storage", ""),
+            getattr(variant, "ram", ""),
         ]
-        return ', '.join(option for option in options if option)
+        return ", ".join(option for option in options if option)
 
 
 class CartSerializer(serializers.ModelSerializer):
@@ -52,13 +52,13 @@ class CartSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cart
         fields = [
-            'id',
-            'status',
-            'items',
-            'total_items',
-            'subtotal',
-            'created_at',
-            'updated_at',
+            "id",
+            "status",
+            "items",
+            "total_items",
+            "subtotal",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -67,17 +67,17 @@ class CartItemCreateSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(min_value=1)
 
     def validate_product_variant_id(self, value):
-        ProductVariant = apps.get_model('catalog', 'ProductVariant')
+        ProductVariant = apps.get_model("catalog", "ProductVariant")
 
         try:
             return ProductVariant.objects.get(pk=value)
         except ProductVariant.DoesNotExist:
-            raise serializers.ValidationError('Product variant not found.')
+            raise serializers.ValidationError("Product variant not found.")
 
     def validate(self, attrs):
-        product_variant = attrs['product_variant_id']
-        quantity = attrs['quantity']
-        cart = self.context.get('cart')
+        product_variant = attrs["product_variant_id"]
+        quantity = attrs["quantity"]
+        cart = self.context.get("cart")
         current_quantity = 0
 
         if cart:
@@ -86,18 +86,20 @@ class CartItemCreateSerializer(serializers.Serializer):
                     cart=cart,
                     product_variant=product_variant,
                 )
-                .values_list('quantity', flat=True)
+                .values_list("quantity", flat=True)
                 .first()
                 or 0
             )
 
         if current_quantity + quantity > product_variant.stock_quantity:
-            raise serializers.ValidationError({
-                'quantity': 'Requested quantity exceeds available stock.',
-            })
+            raise serializers.ValidationError(
+                {
+                    "quantity": "Requested quantity exceeds available stock.",
+                }
+            )
 
-        attrs['product_variant'] = product_variant
-        del attrs['product_variant_id']
+        attrs["product_variant"] = product_variant
+        del attrs["product_variant_id"]
         return attrs
 
 

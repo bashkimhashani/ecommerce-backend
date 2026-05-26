@@ -25,24 +25,23 @@ from .services import (
     StripeWebhookService,
 )
 
-
 User = get_user_model()
 
 
 class CheckoutSessionEndpointTests(APITestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name='Acme Store',
-            slug='acme-store',
-            domain='acme.example.com',
-            plan='basic',
+            name="Acme Store",
+            slug="acme-store",
+            domain="acme.example.com",
+            plan="basic",
         )
         self.user = User.objects.create_user(
-            email='customer@example.com',
-            password='StrongPass123',
-            first_name='Customer',
-            last_name='User',
-            role='customer',
+            email="customer@example.com",
+            password="StrongPass123",
+            first_name="Customer",
+            last_name="User",
+            role="customer",
             tenant=self.tenant,
         )
         self.client.force_authenticate(user=self.user)
@@ -51,112 +50,112 @@ class CheckoutSessionEndpointTests(APITestCase):
         cart = self._create_cart_with_item()
 
         response = self.client.post(
-            reverse('checkout-session'),
+            reverse("checkout-session"),
             {
-                'idempotency_key': 'checkout-key-123',
-                'shipping_address': self._address_payload(),
+                "idempotency_key": "checkout-key-123",
+                "shipping_address": self._address_payload(),
             },
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['cart_id'], cart.id)
-        self.assertEqual(response.data['idempotency_key'], 'checkout-key-123')
-        self.assertEqual(response.data['status'], CheckoutSession.Status.PENDING)
+        self.assertEqual(response.data["cart_id"], cart.id)
+        self.assertEqual(response.data["idempotency_key"], "checkout-key-123")
+        self.assertEqual(response.data["status"], CheckoutSession.Status.PENDING)
         self.assertEqual(
-            response.data['shipping_address']['city'],
-            'Prishtina',
+            response.data["shipping_address"]["city"],
+            "Prishtina",
         )
         checkout_session = CheckoutSession.objects.get(
-            id=response.data['id'],
+            id=response.data["id"],
         )
         self.assertEqual(checkout_session.user, self.user)
         self.assertEqual(checkout_session.cart, cart)
         self.assertEqual(checkout_session.tenant, self.tenant)
         self.assertEqual(checkout_session.status, CheckoutSession.Status.PENDING)
         self.assertEqual(
-            checkout_session.shipping_address['postal_code'],
-            '10000',
+            checkout_session.shipping_address["postal_code"],
+            "10000",
         )
 
     def test_post_checkout_session_validates_shipping_address_fields(self):
         self._create_cart_with_item()
 
         response = self.client.post(
-            reverse('checkout-session'),
+            reverse("checkout-session"),
             {
-                'idempotency_key': 'checkout-key-123',
-                'shipping_address': {
-                    'city': 'Prishtina',
-                    'line1': 'Main street 1',
+                "idempotency_key": "checkout-key-123",
+                "shipping_address": {
+                    "city": "Prishtina",
+                    "line1": "Main street 1",
                 },
             },
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('full_name', response.data['shipping_address'])
-        self.assertIn('postal_code', response.data['shipping_address'])
+        self.assertIn("full_name", response.data["shipping_address"])
+        self.assertIn("postal_code", response.data["shipping_address"])
 
     def test_post_checkout_session_reuses_existing_idempotency_key(self):
         self._create_cart_with_item()
 
         first_response = self.client.post(
-            reverse('checkout-session'),
-            {'idempotency_key': 'checkout-key-123'},
-            format='json',
+            reverse("checkout-session"),
+            {"idempotency_key": "checkout-key-123"},
+            format="json",
         )
         second_response = self.client.post(
-            reverse('checkout-session'),
-            {'idempotency_key': 'checkout-key-123'},
-            format='json',
+            reverse("checkout-session"),
+            {"idempotency_key": "checkout-key-123"},
+            format="json",
         )
 
         self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(second_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(first_response.data['id'], second_response.data['id'])
+        self.assertEqual(first_response.data["id"], second_response.data["id"])
         self.assertEqual(CheckoutSession.objects.count(), 1)
 
     def test_post_checkout_session_accepts_idempotency_key_header(self):
         self._create_cart_with_item()
 
         response = self.client.post(
-            reverse('checkout-session'),
+            reverse("checkout-session"),
             {},
-            format='json',
-            HTTP_IDEMPOTENCY_KEY='checkout-key-123',
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="checkout-key-123",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['idempotency_key'], 'checkout-key-123')
+        self.assertEqual(response.data["idempotency_key"], "checkout-key-123")
 
     def test_post_checkout_session_rejects_empty_cart(self):
         Cart.objects.create(user=self.user, tenant=self.tenant)
 
         response = self.client.post(
-            reverse('checkout-session'),
-            {'idempotency_key': 'checkout-key-123'},
-            format='json',
+            reverse("checkout-session"),
+            {"idempotency_key": "checkout-key-123"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('empty cart', response.data['detail'])
+        self.assertIn("empty cart", response.data["detail"])
 
     def test_post_checkout_session_requires_customer_role(self):
         vendor = User.objects.create_user(
-            email='vendor@example.com',
-            password='StrongPass123',
-            first_name='Vendor',
-            last_name='Admin',
-            role='vendor_admin',
+            email="vendor@example.com",
+            password="StrongPass123",
+            first_name="Vendor",
+            last_name="Admin",
+            role="vendor_admin",
             tenant=self.tenant,
         )
         self.client.force_authenticate(user=vendor)
 
         response = self.client.post(
-            reverse('checkout-session'),
-            {'idempotency_key': 'checkout-key-123'},
-            format='json',
+            reverse("checkout-session"),
+            {"idempotency_key": "checkout-key-123"},
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -166,27 +165,27 @@ class CheckoutSessionEndpointTests(APITestCase):
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             tenant=self.tenant,
         )
 
         response = self.client.patch(
-            reverse('checkout-session-address', args=[checkout_session.id]),
+            reverse("checkout-session-address", args=[checkout_session.id]),
             self._address_payload(),
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['status'], CheckoutSession.Status.READY)
+        self.assertEqual(response.data["status"], CheckoutSession.Status.READY)
         self.assertEqual(
-            response.data['shipping_address']['line1'],
-            'Main street 1',
+            response.data["shipping_address"]["line1"],
+            "Main street 1",
         )
         checkout_session.refresh_from_db()
         self.assertEqual(checkout_session.status, CheckoutSession.Status.READY)
         self.assertEqual(
-            checkout_session.shipping_address['full_name'],
-            'Customer User',
+            checkout_session.shipping_address["full_name"],
+            "Customer User",
         )
 
     def test_patch_checkout_session_address_validates_required_fields(self):
@@ -194,40 +193,42 @@ class CheckoutSessionEndpointTests(APITestCase):
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             tenant=self.tenant,
         )
 
         response = self.client.patch(
-            reverse('checkout-session-address', args=[checkout_session.id]),
+            reverse("checkout-session-address", args=[checkout_session.id]),
             {
-                'city': 'Prishtina',
+                "city": "Prishtina",
             },
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('line1', response.data)
-        self.assertIn('postal_code', response.data)
+        self.assertIn("line1", response.data)
+        self.assertIn("postal_code", response.data)
 
     def test_address_serializer_rejects_missing_required_fields(self):
-        serializer = AddressSerializer(data={
-            'city': 'Prishtina',
-            'line1': 'Main street 1',
-        })
+        serializer = AddressSerializer(
+            data={
+                "city": "Prishtina",
+                "line1": "Main street 1",
+            }
+        )
 
         self.assertFalse(serializer.is_valid())
-        self.assertIn('full_name', serializer.errors)
-        self.assertIn('phone', serializer.errors)
-        self.assertIn('postal_code', serializer.errors)
-        self.assertIn('country', serializer.errors)
+        self.assertIn("full_name", serializer.errors)
+        self.assertIn("phone", serializer.errors)
+        self.assertIn("postal_code", serializer.errors)
+        self.assertIn("country", serializer.errors)
 
     def test_create_from_checkout_creates_order_atomically(self):
         cart = self._create_cart_with_item()
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             shipping_address=self._address_payload(),
             status=CheckoutSession.Status.READY,
             tenant=self.tenant,
@@ -243,7 +244,7 @@ class CheckoutSessionEndpointTests(APITestCase):
         order_item = order.items.get()
         self.assertEqual(order_item.product_variant, product_variant)
         self.assertEqual(order_item.quantity, 1)
-        self.assertEqual(order_item.product_name, 'Phone Pro')
+        self.assertEqual(order_item.product_name, "Phone Pro")
         checkout_session.refresh_from_db()
         cart.refresh_from_db()
         product_variant.refresh_from_db()
@@ -257,7 +258,7 @@ class CheckoutSessionEndpointTests(APITestCase):
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             shipping_address=self._address_payload(),
             status=CheckoutSession.Status.READY,
             tenant=self.tenant,
@@ -275,11 +276,11 @@ class CheckoutSessionEndpointTests(APITestCase):
         cart_item = cart.items.get()
         product_variant = cart_item.product_variant
         product_variant.stock_quantity = 0
-        product_variant.save(update_fields=['stock_quantity'])
+        product_variant.save(update_fields=["stock_quantity"])
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             shipping_address=self._address_payload(),
             status=CheckoutSession.Status.READY,
             tenant=self.tenant,
@@ -315,9 +316,9 @@ class CheckoutSessionEndpointTests(APITestCase):
             locked_product_variant
         )
         product_variant_model = type(
-            'ProductVariantForLockTest',
+            "ProductVariantForLockTest",
             (),
-            {'objects': product_variant_manager},
+            {"objects": product_variant_manager},
         )
         cart_item = SimpleNamespace(
             product_variant=product_variant_model(),
@@ -327,7 +328,8 @@ class CheckoutSessionEndpointTests(APITestCase):
         result = OrderCreationService._lock_product_variant(cart_item)
 
         product_variant_manager.select_for_update.assert_called_once_with()
-        product_variant_manager.select_for_update.return_value.get.assert_called_once_with(
+        locked_variant_get = product_variant_manager.select_for_update.return_value.get
+        locked_variant_get.assert_called_once_with(
             pk=42,
         )
         self.assertEqual(result, locked_product_variant)
@@ -339,7 +341,7 @@ class CheckoutSessionEndpointTests(APITestCase):
 
         self.assertEqual(product_variant.stock_quantity, 3)
         product_variant.save.assert_called_once_with(
-            update_fields=['stock_quantity'],
+            update_fields=["stock_quantity"],
         )
 
     def test_decrement_stock_raises_insufficient_stock_on_underflow(self):
@@ -356,76 +358,76 @@ class CheckoutSessionEndpointTests(APITestCase):
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             tenant=self.tenant,
         )
         payload = self._address_payload()
-        payload['full_name'] = ''
-        payload['line1'] = ''
+        payload["full_name"] = ""
+        payload["line1"] = ""
 
         response = self.client.patch(
-            reverse('checkout-session-address', args=[checkout_session.id]),
+            reverse("checkout-session-address", args=[checkout_session.id]),
             payload,
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('full_name', response.data)
-        self.assertIn('line1', response.data)
+        self.assertIn("full_name", response.data)
+        self.assertIn("line1", response.data)
 
     def test_patch_checkout_session_address_rejects_other_customer_session(self):
         other_user = User.objects.create_user(
-            email='other@example.com',
-            password='StrongPass123',
-            first_name='Other',
-            last_name='Customer',
-            role='customer',
+            email="other@example.com",
+            password="StrongPass123",
+            first_name="Other",
+            last_name="Customer",
+            role="customer",
             tenant=self.tenant,
         )
         cart = self._create_cart_with_item(user=other_user)
         checkout_session = CheckoutSession.objects.create(
             user=other_user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             tenant=self.tenant,
         )
 
         response = self.client.patch(
-            reverse('checkout-session-address', args=[checkout_session.id]),
+            reverse("checkout-session-address", args=[checkout_session.id]),
             self._address_payload(),
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_patch_checkout_session_address_requires_customer_role(self):
         vendor = User.objects.create_user(
-            email='vendor@example.com',
-            password='StrongPass123',
-            first_name='Vendor',
-            last_name='Admin',
-            role='vendor_admin',
+            email="vendor@example.com",
+            password="StrongPass123",
+            first_name="Vendor",
+            last_name="Admin",
+            role="vendor_admin",
             tenant=self.tenant,
         )
         cart = self._create_cart_with_item()
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             tenant=self.tenant,
         )
         self.client.force_authenticate(user=vendor)
 
         response = self.client.patch(
-            reverse('checkout-session-address', args=[checkout_session.id]),
+            reverse("checkout-session-address", args=[checkout_session.id]),
             self._address_payload(),
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    @override_settings(STRIPE_SECRET_KEY='sk_test_123')
-    @patch('checkout.services.stripe.PaymentIntent.create')
+    @override_settings(STRIPE_SECRET_KEY="sk_test_123")
+    @patch("checkout.services.stripe.PaymentIntent.create")
     def test_post_checkout_session_payment_intent_creates_stripe_intent(
         self,
         create_payment_intent,
@@ -434,45 +436,45 @@ class CheckoutSessionEndpointTests(APITestCase):
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             shipping_address=self._address_payload(),
             status=CheckoutSession.Status.READY,
             tenant=self.tenant,
         )
         create_payment_intent.return_value = {
-            'id': 'pi_test_123',
-            'client_secret': 'pi_test_123_secret_abc',
-            'amount': 99900,
-            'currency': 'usd',
+            "id": "pi_test_123",
+            "client_secret": "pi_test_123_secret_abc",
+            "amount": 99900,
+            "currency": "usd",
         }
 
         response = self.client.post(
             reverse(
-                'checkout-session-payment-intent',
+                "checkout-session-payment-intent",
                 args=[checkout_session.id],
             ),
             {},
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['payment_intent_id'], 'pi_test_123')
+        self.assertEqual(response.data["payment_intent_id"], "pi_test_123")
         self.assertEqual(
-            response.data['client_secret'],
-            'pi_test_123_secret_abc',
+            response.data["client_secret"],
+            "pi_test_123_secret_abc",
         )
-        self.assertEqual(response.data['amount'], 99900)
-        self.assertEqual(response.data['currency'], 'usd')
+        self.assertEqual(response.data["amount"], 99900)
+        self.assertEqual(response.data["currency"], "usd")
         create_payment_intent.assert_called_once()
         payment_intent_kwargs = create_payment_intent.call_args.kwargs
-        self.assertEqual(payment_intent_kwargs['amount'], 99900)
-        self.assertEqual(payment_intent_kwargs['currency'], 'usd')
+        self.assertEqual(payment_intent_kwargs["amount"], 99900)
+        self.assertEqual(payment_intent_kwargs["currency"], "usd")
         self.assertEqual(
-            payment_intent_kwargs['idempotency_key'],
-            f'checkout-session-{checkout_session.id}',
+            payment_intent_kwargs["idempotency_key"],
+            f"checkout-session-{checkout_session.id}",
         )
         self.assertEqual(
-            payment_intent_kwargs['metadata']['checkout_session_id'],
+            payment_intent_kwargs["metadata"]["checkout_session_id"],
             str(checkout_session.id),
         )
 
@@ -481,7 +483,7 @@ class CheckoutSessionEndpointTests(APITestCase):
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             shipping_address=self._address_payload(),
             status=CheckoutSession.Status.PENDING,
             tenant=self.tenant,
@@ -489,27 +491,27 @@ class CheckoutSessionEndpointTests(APITestCase):
 
         response = self.client.post(
             reverse(
-                'checkout-session-payment-intent',
+                "checkout-session-payment-intent",
                 args=[checkout_session.id],
             ),
             {},
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('ready', response.data['detail'])
+        self.assertIn("ready", response.data["detail"])
 
     def test_amount_to_cents_rounds_decimal_amount(self):
-        self.assertEqual(PaymentIntentService._amount_to_cents('19.995'), 2000)
+        self.assertEqual(PaymentIntentService._amount_to_cents("19.995"), 2000)
 
-    @override_settings(STRIPE_SECRET_KEY='sk_test_123')
+    @override_settings(STRIPE_SECRET_KEY="sk_test_123")
     def test_payment_intent_success_with_stripe_mock(self):
         self._skip_unless_stripe_mock_available()
         cart = self._create_cart_with_item()
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             shipping_address=self._address_payload(),
             status=CheckoutSession.Status.READY,
             tenant=self.tenant,
@@ -518,21 +520,21 @@ class CheckoutSessionEndpointTests(APITestCase):
         with self._stripe_mock_client():
             response = self.client.post(
                 reverse(
-                    'checkout-session-payment-intent',
+                    "checkout-session-payment-intent",
                     args=[checkout_session.id],
                 ),
                 {},
-                format='json',
+                format="json",
             )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data['payment_intent_id'])
-        self.assertTrue(response.data['client_secret'])
-        self.assertEqual(response.data['amount'], 99900)
-        self.assertEqual(response.data['currency'], 'usd')
+        self.assertTrue(response.data["payment_intent_id"])
+        self.assertTrue(response.data["client_secret"])
+        self.assertEqual(response.data["amount"], 99900)
+        self.assertEqual(response.data["currency"], "usd")
 
-    @override_settings(STRIPE_SECRET_KEY='sk_test_123')
-    @patch('checkout.services.stripe.PaymentIntent.create')
+    @override_settings(STRIPE_SECRET_KEY="sk_test_123")
+    @patch("checkout.services.stripe.PaymentIntent.create")
     def test_payment_intent_card_decline_returns_gateway_error(
         self,
         create_payment_intent,
@@ -541,41 +543,41 @@ class CheckoutSessionEndpointTests(APITestCase):
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             shipping_address=self._address_payload(),
             status=CheckoutSession.Status.READY,
             tenant=self.tenant,
         )
         create_payment_intent.side_effect = stripe.CardError(
-            message='Your card was declined.',
-            param='payment_method',
-            code='card_declined',
+            message="Your card was declined.",
+            param="payment_method",
+            code="card_declined",
             http_status=402,
             json_body={
-                'error': {
-                    'code': 'card_declined',
-                    'decline_code': 'generic_decline',
-                    'message': 'Your card was declined.',
-                    'type': 'card_error',
+                "error": {
+                    "code": "card_declined",
+                    "decline_code": "generic_decline",
+                    "message": "Your card was declined.",
+                    "type": "card_error",
                 },
             },
         )
 
         response = self.client.post(
             reverse(
-                'checkout-session-payment-intent',
+                "checkout-session-payment-intent",
                 args=[checkout_session.id],
             ),
             {},
-            format='json',
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
-        self.assertIn('declined', response.data['detail'])
+        self.assertIn("declined", response.data["detail"])
         self.assertFalse(Order.objects.exists())
 
-    @override_settings(STRIPE_WEBHOOK_SECRET='whsec_test_123')
-    @patch('checkout.views.stripe.Webhook.construct_event')
+    @override_settings(STRIPE_WEBHOOK_SECRET="whsec_test_123")
+    @patch("checkout.views.stripe.Webhook.construct_event")
     def test_post_stripe_webhook_creates_confirmed_order(
         self,
         construct_event,
@@ -584,98 +586,99 @@ class CheckoutSessionEndpointTests(APITestCase):
         checkout_session = CheckoutSession.objects.create(
             user=self.user,
             cart=cart,
-            idempotency_key='checkout-key-123',
+            idempotency_key="checkout-key-123",
             shipping_address=self._address_payload(),
             status=CheckoutSession.Status.READY,
             tenant=self.tenant,
         )
         construct_event.return_value = {
-            'type': 'payment_intent.succeeded',
-            'data': {
-                'object': {
-                    'id': 'pi_test_123',
-                    'metadata': {
-                        'checkout_session_id': str(checkout_session.id),
+            "type": "payment_intent.succeeded",
+            "data": {
+                "object": {
+                    "id": "pi_test_123",
+                    "metadata": {
+                        "checkout_session_id": str(checkout_session.id),
                     },
                 },
             },
         }
 
         response = self.client.post(
-            reverse('stripe-webhook'),
+            reverse("stripe-webhook"),
             data=b'{"id":"evt_test_123"}',
-            content_type='application/json',
-            HTTP_STRIPE_SIGNATURE='test-signature',
+            content_type="application/json",
+            HTTP_STRIPE_SIGNATURE="test-signature",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         order = Order.objects.get(checkout_session=checkout_session)
         self.assertEqual(order.status, Order.Status.CONFIRMED)
-        self.assertEqual(response.data['order_number'], order.order_number)
-        self.assertEqual(response.data['order_status'], Order.Status.CONFIRMED)
+        self.assertEqual(response.data["order_number"], order.order_number)
+        self.assertEqual(response.data["order_status"], Order.Status.CONFIRMED)
         construct_event.assert_called_once_with(
             payload=b'{"id":"evt_test_123"}',
-            sig_header='test-signature',
-            secret='whsec_test_123',
+            sig_header="test-signature",
+            secret="whsec_test_123",
         )
 
-    @override_settings(STRIPE_WEBHOOK_SECRET='whsec_test_123')
-    @patch('checkout.views.stripe.Webhook.construct_event')
+    @override_settings(STRIPE_WEBHOOK_SECRET="whsec_test_123")
+    @patch("checkout.views.stripe.Webhook.construct_event")
     def test_post_stripe_webhook_rejects_invalid_signature(
         self,
         construct_event,
     ):
-        stripe_error_module = getattr(stripe, 'error', None)
-        signature_error = (
-            getattr(stripe, 'SignatureVerificationError', None)
-            or getattr(stripe_error_module, 'SignatureVerificationError')
-        )
+        stripe_error_module = getattr(stripe, "error", None)
+        signature_error = getattr(
+            stripe, "SignatureVerificationError", None
+        ) or getattr(stripe_error_module, "SignatureVerificationError")
         construct_event.side_effect = signature_error(
-            'Invalid signature',
-            'test-signature',
+            "Invalid signature",
+            "test-signature",
         )
 
         response = self.client.post(
-            reverse('stripe-webhook'),
+            reverse("stripe-webhook"),
             data=b'{"id":"evt_test_123"}',
-            content_type='application/json',
-            HTTP_STRIPE_SIGNATURE='bad-signature',
+            content_type="application/json",
+            HTTP_STRIPE_SIGNATURE="bad-signature",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('signature', response.data['detail'])
+        self.assertIn("signature", response.data["detail"])
         self.assertFalse(Order.objects.exists())
 
-    @override_settings(STRIPE_WEBHOOK_SECRET='')
+    @override_settings(STRIPE_WEBHOOK_SECRET="")
     def test_post_stripe_webhook_requires_configured_secret(self):
         response = self.client.post(
-            reverse('stripe-webhook'),
+            reverse("stripe-webhook"),
             data=b'{"id":"evt_test_123"}',
-            content_type='application/json',
-            HTTP_STRIPE_SIGNATURE='test-signature',
+            content_type="application/json",
+            HTTP_STRIPE_SIGNATURE="test-signature",
         )
 
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
-        self.assertIn('not configured', response.data['detail'])
+        self.assertIn("not configured", response.data["detail"])
 
     def test_stripe_webhook_service_ignores_unhandled_events(self):
-        result = StripeWebhookService.handle_event({
-            'type': 'payment_intent.created',
-            'data': {'object': {'metadata': {}}},
-        })
+        result = StripeWebhookService.handle_event(
+            {
+                "type": "payment_intent.created",
+                "data": {"object": {"metadata": {}}},
+            }
+        )
 
         self.assertIsNone(result)
 
     def _address_payload(self):
         return {
-            'full_name': 'Customer User',
-            'phone': '+38344111222',
-            'line1': 'Main street 1',
-            'line2': 'Apartment 4',
-            'city': 'Prishtina',
-            'state': '',
-            'postal_code': '10000',
-            'country': 'Kosovo',
+            "full_name": "Customer User",
+            "phone": "+38344111222",
+            "line1": "Main street 1",
+            "line2": "Apartment 4",
+            "city": "Prishtina",
+            "state": "",
+            "postal_code": "10000",
+            "country": "Kosovo",
         }
 
     def _create_cart_with_item(self, user=None):
@@ -694,37 +697,37 @@ class CheckoutSessionEndpointTests(APITestCase):
         return cart
 
     def _create_product_variant(self):
-        Brand = apps.get_model('catalog', 'Brand')
-        Category = apps.get_model('catalog', 'Category')
-        Product = apps.get_model('catalog', 'Product')
-        ProductVariant = apps.get_model('catalog', 'ProductVariant')
+        Brand = apps.get_model("catalog", "Brand")
+        Category = apps.get_model("catalog", "Category")
+        Product = apps.get_model("catalog", "Product")
+        ProductVariant = apps.get_model("catalog", "ProductVariant")
 
         brand, _ = Brand.objects.get_or_create(
-            slug='acme',
+            slug="acme",
             tenant=self.tenant,
-            defaults={'name': 'Acme'},
+            defaults={"name": "Acme"},
         )
         category, _ = Category.objects.get_or_create(
-            slug='phones',
+            slug="phones",
             tenant=self.tenant,
-            defaults={'name': 'Phones'},
+            defaults={"name": "Phones"},
         )
         product = Product.objects.create(
-            name='Phone Pro',
-            slug='phone-pro',
-            sku='PHONE-PRO',
+            name="Phone Pro",
+            slug="phone-pro",
+            sku="PHONE-PRO",
             brand=brand,
             category=category,
-            status='active',
-            base_price='999.00',
+            status="active",
+            base_price="999.00",
             tenant=self.tenant,
         )
         return ProductVariant.objects.create(
             product=product,
-            color='Black',
-            storage='256GB',
-            ram='8GB',
-            variant_price='999.00',
+            color="Black",
+            storage="256GB",
+            ram="8GB",
+            variant_price="999.00",
             stock_quantity=5,
             tenant=self.tenant,
         )
@@ -732,15 +735,15 @@ class CheckoutSessionEndpointTests(APITestCase):
     def _skip_unless_stripe_mock_available(self):
         stripe_mock_url = self._stripe_mock_url()
         parsed_url = urlparse(stripe_mock_url)
-        host = parsed_url.hostname or 'localhost'
-        port = parsed_url.port or (443 if parsed_url.scheme == 'https' else 80)
+        host = parsed_url.hostname or "localhost"
+        port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
 
         try:
             with socket.create_connection((host, port), timeout=1):
                 return
         except OSError:
             self.skipTest(
-                f'stripe-mock is not available at {stripe_mock_url}.',
+                f"stripe-mock is not available at {stripe_mock_url}.",
             )
 
     def _stripe_mock_client(self):
@@ -751,7 +754,7 @@ class CheckoutSessionEndpointTests(APITestCase):
                 self.previous_api_base = stripe.api_base
                 self.previous_api_key = stripe.api_key
                 stripe.api_base = test_case._stripe_mock_url()
-                stripe.api_key = 'sk_test_123'
+                stripe.api_key = "sk_test_123"
 
             def __exit__(self, exc_type, exc, traceback):
                 stripe.api_base = self.previous_api_base
@@ -762,6 +765,6 @@ class CheckoutSessionEndpointTests(APITestCase):
     @staticmethod
     def _stripe_mock_url():
         return os.environ.get(
-            'STRIPE_MOCK_BASE_URL',
-            'http://localhost:12111',
-        ).rstrip('/')
+            "STRIPE_MOCK_BASE_URL",
+            "http://localhost:12111",
+        ).rstrip("/")

@@ -8,16 +8,15 @@ from django.core.mail import send_mail
 def send_email_verification_email(user_id, uid, token):
     User = get_user_model()
     user = User.objects.get(pk=user_id)
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-    verification_url = f'{frontend_url}/verify-email?uid={uid}&token={token}'
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
+    verification_url = f"{frontend_url}/verify-email?uid={uid}&token={token}"
 
     send_mail(
-        subject='Verify your email',
+        subject="Verify your email",
         message=(
-            'Use the link below to verify your email address:\n\n'
-            f'{verification_url}'
+            "Use the link below to verify your email address:\n\n" f"{verification_url}"
         ),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
         recipient_list=[user.email],
         fail_silently=False,
     )
@@ -27,16 +26,13 @@ def send_email_verification_email(user_id, uid, token):
 def send_password_reset_email(user_id, uid, token):
     User = get_user_model()
     user = User.objects.get(pk=user_id)
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-    reset_url = f'{frontend_url}/reset-password?uid={uid}&token={token}'
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
+    reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
 
     send_mail(
-        subject='Reset your password',
-        message=(
-            'Use the link below to reset your password:\n\n'
-            f'{reset_url}'
-        ),
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+        subject="Reset your password",
+        message=("Use the link below to reset your password:\n\n" f"{reset_url}"),
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
         recipient_list=[user.email],
         fail_silently=False,
     )

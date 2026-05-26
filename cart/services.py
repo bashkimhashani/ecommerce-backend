@@ -13,7 +13,7 @@ from .models import Cart, CartItem
 class CartService:
     @classmethod
     def get_serialized_cart(cls, request):
-        user = getattr(request, 'user', None)
+        user = getattr(request, "user", None)
 
         if not user or not user.is_authenticated:
             session_key = cls._get_or_create_session_key(request)
@@ -28,8 +28,8 @@ class CartService:
     @classmethod
     @transaction.atomic
     def get_or_create_cart(cls, request):
-        user = getattr(request, 'user', None)
-        tenant = getattr(request, 'tenant', None) or get_current_tenant()
+        user = getattr(request, "user", None)
+        tenant = getattr(request, "tenant", None) or get_current_tenant()
 
         if user and user.is_authenticated:
             return cls._get_or_create_user_cart(user, tenant)
@@ -43,7 +43,7 @@ class CartService:
             user=user,
             status=Cart.Status.ACTIVE,
             defaults={
-                'tenant': tenant or user.tenant,
+                "tenant": tenant or user.tenant,
             },
         )
         return cart
@@ -54,7 +54,7 @@ class CartService:
             session_key=session_key,
             status=Cart.Status.ACTIVE,
             defaults={
-                'tenant': tenant,
+                "tenant": tenant,
             },
         )
         cls._store_cart_after_commit(cart)
@@ -62,9 +62,9 @@ class CartService:
 
     @staticmethod
     def _get_or_create_session_key(request):
-        session = getattr(request, 'session', None)
+        session = getattr(request, "session", None)
         if session is None:
-            raise ValueError('Cart requests require session middleware.')
+            raise ValueError("Cart requests require session middleware.")
 
         if not session.session_key:
             session.create()
@@ -74,8 +74,12 @@ class CartService:
     @classmethod
     @transaction.atomic
     def add_item(cls, cart, product_variant, quantity):
-        product_variant = type(product_variant).objects.select_for_update().get(
-            pk=product_variant.pk,
+        product_variant = (
+            type(product_variant)
+            .objects.select_for_update()
+            .get(
+                pk=product_variant.pk,
+            )
         )
         item = (
             CartItem.objects.select_for_update()
@@ -86,11 +90,11 @@ class CartService:
         requested_quantity = current_quantity + quantity
 
         if requested_quantity > product_variant.stock_quantity:
-            raise ValueError('Requested quantity exceeds available stock.')
+            raise ValueError("Requested quantity exceeds available stock.")
 
         if item:
             item.quantity = requested_quantity
-            item.save(update_fields=['quantity', 'updated_at'])
+            item.save(update_fields=["quantity", "updated_at"])
             cls._invalidate_cart_after_commit(cart)
             return item
 
@@ -126,16 +130,20 @@ class CartService:
     @classmethod
     @transaction.atomic
     def update_item_quantity(cls, item, quantity):
-        product_variant = type(item.product_variant).objects.select_for_update().get(
-            pk=item.product_variant_id,
+        product_variant = (
+            type(item.product_variant)
+            .objects.select_for_update()
+            .get(
+                pk=item.product_variant_id,
+            )
         )
         item = CartItem.objects.select_for_update().get(pk=item.pk)
 
         if quantity > product_variant.stock_quantity:
-            raise ValueError('Requested quantity exceeds available stock.')
+            raise ValueError("Requested quantity exceeds available stock.")
 
         item.quantity = quantity
-        item.save(update_fields=['quantity', 'updated_at'])
+        item.save(update_fields=["quantity", "updated_at"])
         cls._invalidate_cart_after_commit(item.cart)
         return item
 
@@ -161,14 +169,18 @@ class CartService:
 
         guest_items = (
             CartItem.objects.select_for_update()
-            .select_related('product_variant')
+            .select_related("product_variant")
             .filter(cart=guest_cart)
         )
 
         for guest_item in guest_items:
-            product_variant = type(
-                guest_item.product_variant,
-            ).objects.select_for_update().get(pk=guest_item.product_variant_id)
+            product_variant = (
+                type(
+                    guest_item.product_variant,
+                )
+                .objects.select_for_update()
+                .get(pk=guest_item.product_variant_id)
+            )
             user_item = (
                 CartItem.objects.select_for_update()
                 .filter(cart=user_cart, product_variant=product_variant)
@@ -187,7 +199,7 @@ class CartService:
 
             if user_item:
                 user_item.quantity = merged_quantity
-                user_item.save(update_fields=['quantity', 'updated_at'])
+                user_item.save(update_fields=["quantity", "updated_at"])
                 continue
 
             CartItem.objects.create(
@@ -199,7 +211,7 @@ class CartService:
             )
 
         guest_cart.status = Cart.Status.MERGED
-        guest_cart.save(update_fields=['status', 'updated_at'])
+        guest_cart.save(update_fields=["status", "updated_at"])
         cls._invalidate_cart_after_commit(guest_cart)
         cls._invalidate_cart_after_commit(user_cart)
         return user_cart
@@ -231,7 +243,7 @@ class CartService:
     def _store_cart(cart_id):
         try:
             cart = Cart.objects.prefetch_related(
-                'items__product_variant__product',
+                "items__product_variant__product",
             ).get(pk=cart_id)
             CartRedisCache.store_cart(cart)
         except (Cart.DoesNotExist, RedisError):

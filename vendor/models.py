@@ -4,13 +4,17 @@ from tenants.models import Tenant
 
 User = get_user_model()
 
+
 class VendorProfile(models.Model):
     """
     Modeli for vendor profile
     Supports multi-tenancy - each vendor belongs to a tenant
     """
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='vendor_profile')
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='vendors')
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="vendor_profile"
+    )
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="vendors")
     store_name = models.CharField(max_length=255)
     store_description = models.TextField(blank=True, null=True)
     logo = models.URLField(blank=True, null=True)
@@ -23,10 +27,10 @@ class VendorProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ['user', 'tenant']
+        unique_together = ["user", "tenant"]
         indexes = [
-            models.Index(fields=['tenant', 'is_active']),
-            models.Index(fields=['store_name']),
+            models.Index(fields=["tenant", "is_active"]),
+            models.Index(fields=["store_name"]),
         ]
 
     def __str__(self):
