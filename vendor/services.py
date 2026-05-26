@@ -3,6 +3,7 @@ from django.core.cache import cache
 from django.db.models import F
 
 from ai.models import AIReport
+from ai.services import AnalyticsQueryResolver
 from inventory.models import Inventory
 
 from .models import VendorProfile
@@ -12,6 +13,14 @@ from .order_reports import (
     vendor_order_totals,
 )
 from .tasks import export_vendor_orders_csv
+
+
+class UnsupportedExportFormatError(ValueError):
+    pass
+
+
+class VendorProfileNotFoundError(ValueError):
+    pass
 
 
 class VendorService:
@@ -58,6 +67,17 @@ class VendorService:
             'product_variant__product',
         )
 
+    @staticmethod
+    def resolve_analytics_query(
+        user,
+        question,
+        resolver_class=AnalyticsQueryResolver,
+    ):
+        return resolver_class().resolve(
+            tenant=user.tenant,
+            question=question,
+        )
+
     @classmethod
     def list_inventory_for_user(cls, user):
         vendor = cls.get_vendor_for_user(user)
@@ -75,8 +95,23 @@ class VendorService:
         if vendor is None:
             return None, None
 
-        inventory = cls.get_vendor_inventory(vendor).filter(id=inventory_id).first()
+        inventory = (
+            cls.get_vendor_inventory(vendor)
+            .filter(id=inventory_id)
+            .first()
+        )
         return vendor, inventory
+
+    @classmethod
+    def update_inventory_item(cls, user, inventory_id, serializer):
+        _, inventory = cls.get_inventory_item_for_user(user, inventory_id)
+        if inventory is None:
+            if cls.get_vendor_for_user(user) is None:
+                raise VendorProfileNotFoundError('Vendor profile not found')
+            return None
+
+        serializer.instance = inventory
+        return serializer.save()
 
     @staticmethod
     def get_order_summary(vendor):
@@ -99,6 +134,17 @@ class VendorService:
             'message': 'CSV export has been queued',
             'poll_url': f'/api/v1/vendor/export/status/?task_id={task.id}',
         }
+
+    @classmethod
+    def queue_order_export_for_user(cls, user, format_param='csv'):
+        if format_param != 'csv':
+            raise UnsupportedExportFormatError('Only CSV format is supported')
+
+        vendor = cls.get_vendor_for_user(user)
+        if vendor is None:
+            raise VendorProfileNotFoundError('Vendor profile not found')
+
+        return cls.queue_order_export(user, vendor)
 
     @staticmethod
     def get_export_status(task_id):

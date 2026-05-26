@@ -1,5 +1,6 @@
 from decimal import Decimal
 import json
+import uuid
 
 from django.conf import settings
 from django.db.models import Count, Sum
@@ -9,6 +10,8 @@ from openai import OpenAI
 
 from catalog.models import Product
 from orders.models import Order, OrderItem
+
+from .history import ChatHistoryStore
 
 
 class AnalyticsQueryValidationError(ValueError):
@@ -122,6 +125,85 @@ class ChatService:
             temperature=0.3,
         )
         return response.choices[0].message.content
+
+
+class ChatWorkflowService:
+    history_store_class = ChatHistoryStore
+    product_retriever_class = ProductContextRetriever
+    chat_service_class = ChatService
+
+    def respond(self, message, session_id=None, tenant=None):
+        session_id = session_id or uuid.uuid4().hex
+        history_store = self.history_store_class()
+        history = history_store.get_history(session_id)
+        products = self.product_retriever_class().get_relevant_products(
+            message,
+            tenant=tenant,
+        )
+        messages = [
+            *history,
+            {'role': 'user', 'content': message},
+        ][-20:]
+        used_fallback = False
+
+        try:
+            assistant_message = self.chat_service_class().complete(
+                messages=messages,
+                system_prompt=self.build_system_prompt(products),
+            )
+        except Exception:
+            used_fallback = True
+            assistant_message = self.build_fallback_answer(products)
+
+        history_store.append_turn(
+            session_id=session_id,
+            tenant=tenant,
+            user_message=message,
+            assistant_message=assistant_message,
+        )
+        return {
+            'session_id': session_id,
+            'message': assistant_message,
+            'used_fallback': used_fallback,
+            'products': products,
+        }
+
+    def build_system_prompt(self, products):
+        return (
+            f'{settings.OPENAI_CHAT_SYSTEM_PROMPT}\n\n'
+            f'Catalog context:\n{self.format_products(products)}'
+        )
+
+    def format_products(self, products):
+        if not products:
+            return 'No matching catalog products were found for this question.'
+        return '\n'.join(
+            (
+                f"- {product['name']} ({product['brand']}): "
+                f"${product['price']}; category {product['category']}; "
+                f"SKU {product['sku']}; specs {product['tech_specs']}"
+            )
+            for product in products
+        )
+
+    def build_fallback_answer(self, products):
+        if not products:
+            return (
+                'I can help with tech products, prices, specs, cart, checkout, '
+                'and account questions. I could not find a matching catalog '
+                'item for that message, so try asking for a product type like '
+                'laptop, phone, keyboard, or monitor.'
+            )
+
+        product_lines = [
+            f"{product['name']} by {product['brand']} at ${product['price']}"
+            for product in products[:3]
+        ]
+        return (
+            'Here are a few catalog matches I can recommend: '
+            f"{'; '.join(product_lines)}. "
+            'Tell me your budget or preferred specs and I can narrow it down.'
+        )
 
 
 class SalesAggregator:
