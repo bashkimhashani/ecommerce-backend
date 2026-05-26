@@ -68,6 +68,27 @@ git commit -m "docs: add contributing guide and PR checklist (#409)"
 
 Keep commits focused. Stage only the files that belong to the current task instead of using `git add .`.
 
+## Pre-commit Hooks
+
+Install the development tooling and Git hook before committing backend changes:
+
+```bash
+python -m pip install -r requirements-dev.txt
+pre-commit install
+```
+
+The configured hooks run before each commit and check:
+
+- Basic file hygiene such as trailing whitespace, YAML syntax, final newlines, and large accidental files.
+- Python formatting with `black --check --diff`.
+- Python linting with `flake8`.
+
+To run the same checks manually:
+
+```bash
+pre-commit run --all-files
+```
+
 ## Local Development
 
 Run Docker commands from the infrastructure repository:
@@ -128,16 +149,16 @@ Use this structure when opening a pull request:
 
 ```markdown
 ## What This Does
-- 
+-
 
 ## Related Task
 - #
 
 ## Related Epic / Story
-- 
+-
 
 ## How To Test
-1. 
+1.
 
 ## Checklist
 - [ ] I used a task-specific branch.
