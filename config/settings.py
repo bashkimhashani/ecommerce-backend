@@ -49,6 +49,7 @@ env = environ.Env(
     AWS_ACCESS_KEY_ID=(str, ""),
     AWS_SECRET_ACCESS_KEY=(str, ""),
     AWS_S3_CUSTOM_DOMAIN=(str, ""),
+    AWS_QUERYSTRING_AUTH=(bool, False),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -161,7 +162,7 @@ AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
 AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN")
 AWS_S3_FILE_OVERWRITE = False
 AWS_DEFAULT_ACL = None
-AWS_QUERYSTRING_AUTH = False
+AWS_QUERYSTRING_AUTH = env("AWS_QUERYSTRING_AUTH")
 
 if AWS_STORAGE_BUCKET_NAME:
     INSTALLED_APPS.append("storages")
