@@ -152,6 +152,8 @@ Use this structure when opening a pull request:
 Reviewers should check:
 
 - The change matches the linked task and does not include unrelated work.
+- Business logic lives in app-level `services.py`; API views should validate input,
+  call services, and format HTTP responses.
 - API changes are RESTful and documented in Swagger when relevant.
 - Tenant-scoped data stays isolated by tenant.
 - Protected endpoints use the correct permission classes.
@@ -167,6 +169,8 @@ Reviewers should check:
 - Never push directly to `main`.
 - Always pull the latest `main` before starting a task.
 - One task should map to one branch and one pull request.
+- Keep business rules, database writes, cross-model workflows, cache
+  coordination, background job dispatch, and third-party calls out of views.
 - Run Docker from `ecommerce-infra`.
 - Commit small, focused changes.
 - Tell the team when changing dependencies, Docker, migrations, or shared settings.

@@ -158,8 +158,7 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save()
-            token_pair = AuthService.complete_registration(user)
+            user, token_pair = AuthService.register_user(serializer)
             return Response({
                 'user': UserSerializer(user).data,
                 **token_pair,
@@ -439,7 +438,7 @@ class MeView(APIView):
             context={'request': request},
         )
         if serializer.is_valid():
-            serializer.save()
+            AuthService.update_profile(serializer)
             return Response(serializer.data)
         return Response(
             serializer.errors,

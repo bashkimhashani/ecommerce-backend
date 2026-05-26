@@ -11,8 +11,8 @@ from rest_framework.views import APIView
 
 from users.permissions import IsSuperAdmin
 
-from .models import RequestLog
 from .serializers import RequestLogSerializer
+from .services import RequestLogService
 
 
 class RequestLogPagination(PageNumberPagination):
@@ -76,7 +76,7 @@ class AdminRequestLogListView(APIView):
         ],
     )
     def get(self, request):
-        logs = RequestLog.objects.all()
+        logs = RequestLogService.list_logs()
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(logs, request, view=self)
         serializer = RequestLogSerializer(page, many=True)

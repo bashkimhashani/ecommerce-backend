@@ -55,6 +55,12 @@ class AuthService:
         send_email_verification_email.delay(user.id, uid, token)
         return cls.token_pair_for_user(user)
 
+    @classmethod
+    def register_user(cls, serializer):
+        user = serializer.save()
+        token_pair = cls.complete_registration(user)
+        return user, token_pair
+
     @staticmethod
     def verify_email(user):
         if user.is_email_verified:
@@ -87,3 +93,7 @@ class AuthService:
     def reset_password(user, new_password):
         user.set_password(new_password)
         user.save(update_fields=['password'])
+
+    @staticmethod
+    def update_profile(serializer):
+        return serializer.save()
