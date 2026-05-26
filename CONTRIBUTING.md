@@ -149,16 +149,16 @@ Use this structure when opening a pull request:
 
 ```markdown
 ## What This Does
-- 
+-
 
 ## Related Task
 - #
 
 ## Related Epic / Story
-- 
+-
 
 ## How To Test
-1. 
+1.
 
 ## Checklist
 - [ ] I used a task-specific branch.
