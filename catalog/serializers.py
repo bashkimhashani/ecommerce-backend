@@ -190,12 +190,39 @@ class ProductDetailSerializer(serializers.ModelSerializer):
 
 
 class ProductCreateSerializer(serializers.ModelSerializer):
-    brand_name = serializers.CharField(max_length=255, required=False, write_only=True)
-    category_name = serializers.CharField(max_length=255, required=False, write_only=True)
-    stock_quantity = serializers.IntegerField(min_value=0, required=False, write_only=True)
-    color = serializers.CharField(max_length=100, required=False, allow_blank=True, write_only=True)
-    storage = serializers.CharField(max_length=100, required=False, allow_blank=True, write_only=True)
-    ram = serializers.CharField(max_length=100, required=False, allow_blank=True, write_only=True)
+    brand_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        write_only=True,
+    )
+    category_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        write_only=True,
+    )
+    stock_quantity = serializers.IntegerField(
+        min_value=0,
+        required=False,
+        write_only=True,
+    )
+    color = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    storage = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    ram = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
 
     class Meta:
         model = Product
@@ -296,7 +323,10 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         if not validated_data.get("brand"):
             validated_data["brand"] = self.get_or_create_brand(tenant, brand_name)
         if not validated_data.get("category"):
-            validated_data["category"] = self.get_or_create_category(tenant, category_name)
+            validated_data["category"] = self.get_or_create_category(
+                tenant,
+                category_name,
+            )
 
         product = super().create(validated_data)
         ProductVariant.objects.create(
