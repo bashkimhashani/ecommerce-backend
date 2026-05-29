@@ -12,6 +12,7 @@ env = environ.Env(
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, ["localhost"]),
     CORS_ALLOWED_ORIGINS=(list, ["http://localhost:5173"]),
+    CORS_ALLOW_CREDENTIALS=(bool, True),
     DB_HOST=(str, "db"),
     DB_PORT=(str, "5432"),
     REDIS_URL=(str, "redis://redis:6379/0"),
@@ -189,6 +190,7 @@ if AWS_STORAGE_BUCKET_NAME:
         MEDIA_URL = f"https://{s3_domain}/"
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+CORS_ALLOW_CREDENTIALS = env("CORS_ALLOW_CREDENTIALS")
 
 REDIS_URL = env("REDIS_URL")
 CACHE_KEY_PREFIX = env("CACHE_KEY_PREFIX")
