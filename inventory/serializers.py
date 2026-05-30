@@ -1,4 +1,6 @@
+from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
+
 from .models import Inventory
 
 
@@ -43,6 +45,7 @@ class InventorySerializer(serializers.ModelSerializer):
             "last_updated",
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_variant_name(self, obj):
         values = [
             obj.product_variant.color,

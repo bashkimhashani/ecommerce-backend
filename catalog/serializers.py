@@ -1,3 +1,4 @@
+from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from django.utils.text import slugify
 from rest_framework import serializers
 
@@ -20,6 +21,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
             "children",
         ]
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_children(self, obj):
         children = obj.get_children().filter(is_active=True)
         serializer = self.__class__(
@@ -52,6 +54,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             "avg_rating",
         ]
 
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_vendor(self, obj):
         if obj.vendor_id is None:
             return None
@@ -59,6 +62,7 @@ class ProductListSerializer(serializers.ModelSerializer):
         serializer = VendorSummarySerializer(obj.vendor)
         return serializer.data
 
+    @extend_schema_field(OpenApiTypes.URI)
     def get_thumbnail(self, obj):
         primary_image = next(
             (image for image in obj.images.all() if image.is_primary),
@@ -75,6 +79,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(thumbnail_url)
         return thumbnail_url
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_avg_rating(self, obj):
         return getattr(obj, "avg_rating", None)
 
@@ -185,6 +190,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_avg_rating(self, obj):
         return getattr(obj, "avg_rating", None)
 
