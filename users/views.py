@@ -40,6 +40,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 fields={
                     "access": serializers.CharField(),
                     "refresh": serializers.CharField(),
+                    "user": UserSerializer(),
+                    "role": serializers.CharField(),
+                    "tenant_id": serializers.IntegerField(allow_null=True),
                 },
             ),
         },
@@ -57,6 +60,17 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 value={
                     "access": "eyJhbGciOi...",
                     "refresh": "eyJhbGciOi...",
+                    "user": {
+                        "id": 1,
+                        "email": "customer@example.com",
+                        "first_name": "Customer",
+                        "last_name": "User",
+                        "role": "customer",
+                        "tenant": 1,
+                        "is_email_verified": True,
+                    },
+                    "role": "customer",
+                    "tenant_id": 1,
                 },
                 response_only=True,
             ),

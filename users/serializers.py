@@ -24,6 +24,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["tenant_id"] = user.tenant_id
         return token
 
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data["user"] = UserSerializer(self.user, context=self.context).data
+        data["role"] = self.user.role
+        data["tenant_id"] = self.user.tenant_id
+        return data
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)

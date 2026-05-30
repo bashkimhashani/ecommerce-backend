@@ -390,15 +390,22 @@ class AdminModulePermissionTests(APITestCase):
 
 class LoginEndpointTests(APITestCase):
     def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Customer Store",
+            slug="customer-store",
+            domain="customer.example.com",
+            plan="basic",
+        )
         self.user = User.objects.create_user(
             email="customer@example.com",
             password="StrongPass123",
             first_name="Customer",
             last_name="User",
             role="customer",
+            tenant=self.tenant,
         )
 
-    def test_login_success_returns_access_and_refresh_tokens(self):
+    def test_login_success_returns_tokens_and_user_context(self):
         response = self.client.post(
             reverse("login"),
             {
@@ -411,6 +418,15 @@ class LoginEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("access", response.data)
         self.assertIn("refresh", response.data)
+        self.assertEqual(response.data["role"], "customer")
+        self.assertEqual(response.data["tenant_id"], self.tenant.id)
+        self.assertEqual(response.data["user"]["id"], self.user.id)
+        self.assertEqual(response.data["user"]["email"], "customer@example.com")
+        self.assertEqual(response.data["user"]["first_name"], "Customer")
+        self.assertEqual(response.data["user"]["last_name"], "User")
+        self.assertEqual(response.data["user"]["role"], "customer")
+        self.assertEqual(response.data["user"]["tenant"], self.tenant.id)
+        self.assertNotIn("password", response.data["user"])
         self.assertEqual(
             AccessToken(response.data["access"])["user_id"],
             str(self.user.id),
