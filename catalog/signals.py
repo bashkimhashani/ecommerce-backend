@@ -39,10 +39,8 @@ def invalidate_product_cache(product):
     )
     patterns = [
         f"*catalog:product-list:{tenant_scope}:*",
-        f"*catalog:product-list:{tenant_scope}:vendor:*",
         "*catalog:product-list:tenant:public:*",
         f"*catalog:product-detail:{tenant_scope}:{product.slug}",
-        f"*catalog:product-detail:{tenant_scope}:vendor:*:{product.slug}",
         f"*catalog:product-detail:tenant:public:{product.slug}",
     ]
 
