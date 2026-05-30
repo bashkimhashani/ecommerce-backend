@@ -1,4 +1,5 @@
 from django.apps import apps
+from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
 from .models import Cart, CartItem
@@ -26,10 +27,12 @@ class CartItemSerializer(serializers.ModelSerializer):
             "line_total",
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_product_name(self, obj):
         product = getattr(obj.product_variant, "product", None)
         return getattr(product, "name", "")
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_variant_label(self, obj):
         variant = obj.product_variant
         options = [

@@ -92,6 +92,7 @@ class ProductListView(VendorWritePermissionMixin, APIView):
     vendor_write_methods = {"POST"}
 
     @extend_schema(
+        operation_id="catalog_product_list",
         responses=inline_serializer(
             name="PaginatedProductListResponse",
             fields={
@@ -125,6 +126,7 @@ class ProductListView(VendorWritePermissionMixin, APIView):
         return paginator.get_paginated_response(serializer.data).data
 
     @extend_schema(
+        operation_id="catalog_product_create",
         request=ProductCreateSerializer,
         responses={status.HTTP_201_CREATED: ProductDetailSerializer},
         tags=["Catalog"],
@@ -200,6 +202,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
     vendor_write_methods = {"PUT", "DELETE"}
 
     @extend_schema(
+        operation_id="catalog_product_detail",
         responses=ProductDetailSerializer,
         tags=["Catalog"],
     )
@@ -224,6 +227,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         return serializer.data
 
     @extend_schema(
+        operation_id="catalog_product_update",
         request=ProductCreateSerializer,
         responses=ProductDetailSerializer,
         tags=["Catalog"],
@@ -248,6 +252,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         return Response(response_serializer.data)
 
     @extend_schema(
+        operation_id="catalog_product_delete",
         responses={status.HTTP_204_NO_CONTENT: None},
         tags=["Catalog"],
     )

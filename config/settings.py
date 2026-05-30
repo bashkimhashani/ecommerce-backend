@@ -260,6 +260,39 @@ SPECTACULAR_SETTINGS = {
         "drf_spectacular.hooks.postprocess_schema_enums",
         "config.schema.group_endpoints_by_domain_tag",
     ],
+    "ENUM_NAME_OVERRIDES": {
+        "CartStatusEnum": [
+            ("active", "Active"),
+            ("merged", "Merged"),
+            ("checked_out", "Checked out"),
+            ("abandoned", "Abandoned"),
+        ],
+        "CheckoutSessionStatusEnum": [
+            ("pending", "Pending"),
+            ("ready", "Ready"),
+            ("completed", "Completed"),
+            ("cancelled", "Cancelled"),
+            ("expired", "Expired"),
+        ],
+        "EmailLogStatusEnum": [
+            ("sent", "Sent"),
+            ("failed", "Failed"),
+            ("skipped", "Skipped"),
+        ],
+        "OrderStatusEnum": [
+            ("pending", "Pending"),
+            ("confirmed", "Confirmed"),
+            ("processing", "Processing"),
+            ("shipped", "Shipped"),
+            ("delivered", "Delivered"),
+            ("cancelled", "Cancelled"),
+        ],
+        "ProductStatusEnum": [
+            ("draft", "Draft"),
+            ("active", "Active"),
+            ("archived", "Archived"),
+        ],
+    },
 }
 
 LOGGING = {
