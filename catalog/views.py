@@ -210,6 +210,9 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         tags=["Catalog"],
     )
     def get(self, request, slug):
+        if request.query_params.get("mine") == "1":
+            return Response(self.get_product_detail_data(request, slug))
+
         response_data = CatalogQueryService.get_cached_product_detail(
             request,
             slug,
