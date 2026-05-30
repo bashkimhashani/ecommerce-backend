@@ -1,3 +1,4 @@
+from django.utils.text import slugify
 from rest_framework import serializers
 
 from vendor.models import VendorProfile
@@ -189,6 +190,40 @@ class ProductDetailSerializer(serializers.ModelSerializer):
 
 
 class ProductCreateSerializer(serializers.ModelSerializer):
+    brand_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        write_only=True,
+    )
+    category_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        write_only=True,
+    )
+    stock_quantity = serializers.IntegerField(
+        min_value=0,
+        required=False,
+        write_only=True,
+    )
+    color = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    storage = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    ram = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+
     class Meta:
         model = Product
         fields = [
@@ -201,6 +236,12 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             "status",
             "base_price",
             "tech_specs",
+            "brand_name",
+            "category_name",
+            "stock_quantity",
+            "color",
+            "storage",
+            "ram",
             "created_at",
             "updated_at",
         ]
@@ -222,6 +263,8 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             self.fields["category"].queryset = Category.all_objects.filter(
                 tenant=tenant,
             )
+            self.fields["brand"].required = False
+            self.fields["category"].required = False
         else:
             self.fields["brand"].queryset = Brand.all_objects.none()
             self.fields["category"].queryset = Category.all_objects.none()
@@ -234,6 +277,11 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "A tenant is required to create products.",
             )
+
+        if not attrs.get("brand") and not attrs.get("brand_name"):
+            attrs["brand_name"] = getattr(tenant, "name", "Vendor")
+        if not attrs.get("category") and not attrs.get("category_name"):
+            attrs["category_name"] = "General"
 
         slug = attrs.get("slug")
         sku = attrs.get("sku")
@@ -262,6 +310,55 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(errors)
 
         return attrs
+
+    def create(self, validated_data):
+        tenant = self.context["request"].user.tenant
+        brand_name = validated_data.pop("brand_name", "")
+        category_name = validated_data.pop("category_name", "")
+        stock_quantity = validated_data.pop("stock_quantity", 0)
+        color = validated_data.pop("color", "")
+        storage = validated_data.pop("storage", "")
+        ram = validated_data.pop("ram", "")
+
+        if not validated_data.get("brand"):
+            validated_data["brand"] = self.get_or_create_brand(tenant, brand_name)
+        if not validated_data.get("category"):
+            validated_data["category"] = self.get_or_create_category(
+                tenant,
+                category_name,
+            )
+
+        product = super().create(validated_data)
+        ProductVariant.objects.create(
+            tenant=tenant,
+            product=product,
+            variant_price=product.base_price,
+            stock_quantity=stock_quantity,
+            color=color,
+            storage=storage,
+            ram=ram,
+        )
+        return product
+
+    def get_or_create_brand(self, tenant, name):
+        name = name.strip() or tenant.name
+        slug = slugify(name)[:255] or f"brand-{tenant.id}"
+        brand, _created = Brand.all_objects.get_or_create(
+            tenant=tenant,
+            slug=slug,
+            defaults={"name": name},
+        )
+        return brand
+
+    def get_or_create_category(self, tenant, name):
+        name = name.strip() or "General"
+        slug = slugify(name)[:255] or "general"
+        category, _created = Category.all_objects.get_or_create(
+            tenant=tenant,
+            slug=slug,
+            defaults={"name": name, "is_active": True},
+        )
+        return category
 
 
 class ProductImageBulkUpdateItemSerializer(serializers.Serializer):

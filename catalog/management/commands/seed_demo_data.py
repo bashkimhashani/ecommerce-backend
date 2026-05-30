@@ -30,10 +30,10 @@ DEMO_PASSWORD = "DemoPass123!"
 DEMO_VENDORS = [
     {
         "key": "vendor",
-        "email": "neptun@exmaple.com",
+        "email": "vendor@example.com",
         "first_name": "Demo",
         "last_name": "Vendor",
-        "store_name": "NEPTUN",
+        "store_name": "Demo Tech Vendor",
         "store_description": "Local demo vendor for electronics.",
         "contact_phone": "+15550101010",
         "rating": Decimal("4.8"),
@@ -41,10 +41,10 @@ DEMO_VENDORS = [
     },
     {
         "key": "gaming_vendor",
-        "email": "aztech@example.com",
+        "email": "gaming.vendor@example.com",
         "first_name": "Gaming",
         "last_name": "Vendor",
-        "store_name": "AZTECH",
+        "store_name": "PixelForge Gaming",
         "store_description": "Gaming PCs, accessories, and console gear.",
         "contact_phone": "+15550101011",
         "rating": Decimal("4.6"),
@@ -52,10 +52,10 @@ DEMO_VENDORS = [
     },
     {
         "key": "office_vendor",
-        "email": "pulse_electronics@example.com",
+        "email": "office.vendor@example.com",
         "first_name": "Office",
         "last_name": "Vendor",
-        "store_name": "PulseElectronics",
+        "store_name": "Northstar Office Tech",
         "store_description": "Work laptops, monitors, printers, and networking.",
         "contact_phone": "+15550101012",
         "rating": Decimal("4.7"),

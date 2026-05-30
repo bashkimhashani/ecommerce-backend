@@ -38,11 +38,9 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             status.HTTP_200_OK: inline_serializer(
                 name="TokenPairResponse",
                 fields={
+                    "user": UserSerializer(),
                     "access": serializers.CharField(),
                     "refresh": serializers.CharField(),
-                    "user": UserSerializer(),
-                    "role": serializers.CharField(),
-                    "tenant_id": serializers.IntegerField(allow_null=True),
                 },
             ),
         },
@@ -60,17 +58,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 value={
                     "access": "eyJhbGciOi...",
                     "refresh": "eyJhbGciOi...",
-                    "user": {
-                        "id": 1,
-                        "email": "customer@example.com",
-                        "first_name": "Customer",
-                        "last_name": "User",
-                        "role": "customer",
-                        "tenant": 1,
-                        "is_email_verified": True,
-                    },
-                    "role": "customer",
-                    "tenant_id": 1,
                 },
                 response_only=True,
             ),
@@ -85,7 +72,13 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             raise InvalidToken(error.args[0])
 
         AuthService.merge_guest_cart(request, serializer.user)
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "user": UserSerializer(serializer.user).data,
+                **serializer.validated_data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class CustomTokenRefreshView(TokenRefreshView):
