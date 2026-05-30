@@ -2,6 +2,7 @@ import re
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils.text import slugify
 from rest_framework import serializers
 
 from vendor.models import VendorProfile
@@ -80,6 +81,15 @@ class TenantRegistrationSerializer(serializers.Serializer):
         allow_blank=True,
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if user and user.is_authenticated:
+            for field_name in ["email", "first_name", "last_name", "password"]:
+                self.fields[field_name].required = False
+
     def validate_slug(self, value):
         return validate_unique_tenant_field("slug", value)
 
@@ -88,26 +98,71 @@ class TenantRegistrationSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         email = User.objects.normalize_email(value)
-        if User.objects.filter(email=email).exists():
+        request = self.context.get("request")
+        current_user = getattr(request, "user", None)
+        users = User.objects.filter(email=email)
+        if current_user and current_user.is_authenticated:
+            users = users.exclude(pk=current_user.pk)
+        if users.exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return email
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if user and user.is_authenticated:
+            if user.tenant_id:
+                raise serializers.ValidationError(
+                    "This account is already connected to a vendor tenant."
+                )
+            return attrs
+
+        required_fields = ["email", "first_name", "last_name", "password"]
+        missing_fields = [field for field in required_fields if not attrs.get(field)]
+        if missing_fields:
+            raise serializers.ValidationError(
+                {field: "This field is required." for field in missing_fields}
+            )
+        return attrs
+
     def create(self, validated_data):
-        user_data = {
-            "email": validated_data.pop("email"),
-            "password": validated_data.pop("password"),
-            "first_name": validated_data.pop("first_name"),
-            "last_name": validated_data.pop("last_name"),
-            "phone": validated_data.pop("phone", ""),
-        }
+        request = self.context.get("request")
+        existing_user = getattr(request, "user", None)
+        use_existing_user = bool(existing_user and existing_user.is_authenticated)
+
+        if use_existing_user:
+            user_data = {}
+            validated_data.pop("email", None)
+            validated_data.pop("first_name", None)
+            validated_data.pop("last_name", None)
+            validated_data.pop("password", None)
+            phone = validated_data.pop("phone", "")
+        else:
+            user_data = {
+                "email": validated_data.pop("email"),
+                "password": validated_data.pop("password"),
+                "first_name": validated_data.pop("first_name"),
+                "last_name": validated_data.pop("last_name"),
+                "phone": validated_data.pop("phone", ""),
+            }
+            phone = user_data.get("phone", "")
 
         with transaction.atomic():
             tenant = Tenant.objects.create(**validated_data)
-            user = User.objects.create_user(
-                **user_data,
-                role="vendor_admin",
-                tenant=tenant,
-            )
+            if use_existing_user:
+                user = existing_user
+                user.role = "vendor_admin"
+                user.tenant = tenant
+                if phone and not user.phone:
+                    user.phone = phone
+                user.save(update_fields=["role", "tenant", "phone"])
+            else:
+                user = User.objects.create_user(
+                    **user_data,
+                    role="vendor_admin",
+                    tenant=tenant,
+                )
             tenant.owner = user
             tenant.save(update_fields=["owner"])
             VendorProfile.objects.create(
@@ -118,8 +173,25 @@ class TenantRegistrationSerializer(serializers.Serializer):
                 contact_phone=user.phone,
                 is_active=True,
             )
+            self.create_default_catalog(tenant)
 
         return {
             "tenant": tenant,
             "user": user,
         }
+
+    def create_default_catalog(self, tenant):
+        from catalog.models import Brand, Category
+
+        default_brand_name = tenant.name
+        Brand.objects.create(
+            tenant=tenant,
+            name=default_brand_name,
+            slug=slugify(default_brand_name)[:255] or f"brand-{tenant.id}",
+        )
+        Category.objects.create(
+            tenant=tenant,
+            name="General",
+            slug="general",
+            is_active=True,
+        )

@@ -114,7 +114,10 @@ class ProductListView(VendorWritePermissionMixin, APIView):
     def get_product_list_data(self, request):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(
-            CatalogQueryService.active_products_for_user(request.user),
+            CatalogQueryService.active_products_for_user(
+                request.user,
+                own_vendor_only=request.query_params.get("mine") == "1",
+            ),
             request,
             view=self,
         )
@@ -219,6 +222,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         product = CatalogQueryService.active_product_detail_for_user(
             request.user,
             slug,
+            own_vendor_only=request.query_params.get("mine") == "1",
         )
         serializer = ProductDetailSerializer(
             product,
