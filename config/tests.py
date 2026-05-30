@@ -57,6 +57,9 @@ class SwaggerDocumentationTests(TestCase):
                 "type": "http",
                 "scheme": "bearer",
                 "bearerFormat": "JWT",
+                "description": (
+                    "JWT access token using the Bearer authentication scheme."
+                ),
             },
         )
 

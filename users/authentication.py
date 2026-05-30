@@ -1,4 +1,3 @@
-from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken
 
@@ -11,15 +10,3 @@ class RedisBlacklistJWTAuthentication(JWTAuthentication):
         if is_token_blacklisted_in_redis(validated_token):
             raise InvalidToken("Token is blacklisted.")
         return validated_token
-
-
-class RedisBlacklistJWTAuthenticationScheme(OpenApiAuthenticationExtension):
-    target_class = "users.authentication.RedisBlacklistJWTAuthentication"
-    name = "BearerAuth"
-
-    def get_security_definition(self, auto_schema):
-        return {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
-        }
