@@ -190,7 +190,10 @@ class ProductSearchView(APIView):
         serializer = ProductListSerializer(
             page,
             many=True,
-            context={"request": request},
+            context={
+                "request": request,
+                "include_stock": request.query_params.get("include_stock") == "1",
+            },
         )
         response = paginator.get_paginated_response(serializer.data)
         response.data["facets"] = CatalogQueryService.product_search_facets(

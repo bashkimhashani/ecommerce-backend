@@ -41,6 +41,8 @@ class ProductListSerializer(serializers.ModelSerializer):
     vendor = serializers.SerializerMethodField()
     thumbnail = serializers.SerializerMethodField()
     avg_rating = serializers.SerializerMethodField()
+    total_stock = serializers.SerializerMethodField()
+    is_out_of_stock = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -52,7 +54,15 @@ class ProductListSerializer(serializers.ModelSerializer):
             "vendor",
             "thumbnail",
             "avg_rating",
+            "total_stock",
+            "is_out_of_stock",
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.context.get("include_stock"):
+            self.fields.pop("total_stock", None)
+            self.fields.pop("is_out_of_stock", None)
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_vendor(self, obj):
@@ -82,6 +92,17 @@ class ProductListSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.FLOAT)
     def get_avg_rating(self, obj):
         return getattr(obj, "avg_rating", None)
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_total_stock(self, obj):
+        annotated_stock = getattr(obj, "total_stock", None)
+        if annotated_stock is not None:
+            return annotated_stock or 0
+        return 0
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_is_out_of_stock(self, obj):
+        return self.get_total_stock(obj) <= 0
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
