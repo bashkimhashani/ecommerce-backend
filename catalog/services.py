@@ -3,7 +3,7 @@ from hashlib import md5
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, Max, Prefetch
+from django.db.models import Count, Max, Prefetch, Sum
 from django.shortcuts import get_object_or_404
 from django_redis import get_redis_connection
 from rest_framework.serializers import ValidationError
@@ -150,6 +150,7 @@ class CatalogQueryService:
                 "category",
                 "vendor",
             )
+            .annotate(total_stock=Sum("variants__stock_quantity"))
             .prefetch_related(
                 Prefetch("images", queryset=cls.product_images_for_list()),
             )

@@ -13,6 +13,10 @@ class InventorySerializer(serializers.ModelSerializer):
         source="product_variant.product.sku",
         read_only=True,
     )
+    product_slug = serializers.CharField(
+        source="product_variant.product.slug",
+        read_only=True,
+    )
     variant_name = serializers.SerializerMethodField()
     is_low_stock = serializers.BooleanField(read_only=True)
 
@@ -23,6 +27,7 @@ class InventorySerializer(serializers.ModelSerializer):
             "product_variant",
             "product_name",
             "product_sku",
+            "product_slug",
             "variant_name",
             "vendor",
             "tenant",
@@ -37,6 +42,7 @@ class InventorySerializer(serializers.ModelSerializer):
             "product_variant",
             "product_name",
             "product_sku",
+            "product_slug",
             "variant_name",
             "vendor",
             "tenant",
