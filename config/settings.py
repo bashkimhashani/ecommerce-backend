@@ -4,6 +4,7 @@ from datetime import timedelta
 import environ
 import stripe
 from celery.schedules import crontab
+from corsheaders.defaults import default_headers
 from kombu import Exchange, Queue
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -84,6 +85,7 @@ INSTALLED_APPS = [
     "orders",
     "inventory",
     "vendor",
+    "reviews",
     "request_logs",
 ]
 
@@ -191,6 +193,7 @@ if AWS_STORAGE_BUCKET_NAME:
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = env("CORS_ALLOW_CREDENTIALS")
+CORS_ALLOW_HEADERS = (*default_headers, "idempotency-key")
 
 REDIS_URL = env("REDIS_URL")
 CACHE_KEY_PREFIX = env("CACHE_KEY_PREFIX")
@@ -260,6 +263,39 @@ SPECTACULAR_SETTINGS = {
         "drf_spectacular.hooks.postprocess_schema_enums",
         "config.schema.group_endpoints_by_domain_tag",
     ],
+    "ENUM_NAME_OVERRIDES": {
+        "CartStatusEnum": [
+            ("active", "Active"),
+            ("merged", "Merged"),
+            ("checked_out", "Checked out"),
+            ("abandoned", "Abandoned"),
+        ],
+        "CheckoutSessionStatusEnum": [
+            ("pending", "Pending"),
+            ("ready", "Ready"),
+            ("completed", "Completed"),
+            ("cancelled", "Cancelled"),
+            ("expired", "Expired"),
+        ],
+        "EmailLogStatusEnum": [
+            ("sent", "Sent"),
+            ("failed", "Failed"),
+            ("skipped", "Skipped"),
+        ],
+        "OrderStatusEnum": [
+            ("pending", "Pending"),
+            ("confirmed", "Confirmed"),
+            ("processing", "Processing"),
+            ("shipped", "Shipped"),
+            ("delivered", "Delivered"),
+            ("cancelled", "Cancelled"),
+        ],
+        "ProductStatusEnum": [
+            ("draft", "Draft"),
+            ("active", "Active"),
+            ("archived", "Archived"),
+        ],
+    },
 }
 
 LOGGING = {

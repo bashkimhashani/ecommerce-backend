@@ -3,7 +3,7 @@ from hashlib import md5
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, Max, Prefetch
+from django.db.models import Count, Max, Prefetch, Sum
 from django.shortcuts import get_object_or_404
 from django_redis import get_redis_connection
 from rest_framework.serializers import ValidationError
@@ -90,12 +90,17 @@ class CatalogQueryService:
 
     @staticmethod
     def product_list_cache_key(request):
-        tenant_id = getattr(getattr(request, "user", None), "tenant_id", None)
+        user = getattr(request, "user", None)
+        tenant_id = getattr(user, "tenant_id", None)
+        user_id = getattr(user, "id", None)
         tenant_scope = f"tenant:{tenant_id}" if tenant_id else "tenant:public"
+        own_vendor_scope = (
+            f":vendor:{user_id}" if request.query_params.get("mine") == "1" else ""
+        )
         query_hash = md5(
             request.META.get("QUERY_STRING", "").encode("utf-8"),
         ).hexdigest()
-        return f"catalog:product-list:{tenant_scope}:{query_hash}"
+        return f"catalog:product-list:{tenant_scope}{own_vendor_scope}:{query_hash}"
 
     @classmethod
     def get_cached_product_list(cls, request, callback, timeout):
@@ -107,9 +112,14 @@ class CatalogQueryService:
 
     @staticmethod
     def product_detail_cache_key(request, slug):
-        tenant_id = getattr(getattr(request, "user", None), "tenant_id", None)
+        user = getattr(request, "user", None)
+        tenant_id = getattr(user, "tenant_id", None)
+        user_id = getattr(user, "id", None)
         tenant_scope = f"tenant:{tenant_id}" if tenant_id else "tenant:public"
-        return f"catalog:product-detail:{tenant_scope}:{slug}"
+        own_vendor_scope = (
+            f":vendor:{user_id}" if request.query_params.get("mine") == "1" else ""
+        )
+        return f"catalog:product-detail:{tenant_scope}{own_vendor_scope}:{slug}"
 
     @classmethod
     def get_cached_product_detail(cls, request, slug, callback, timeout):
@@ -130,7 +140,7 @@ class CatalogQueryService:
         ).order_by("-is_primary", "sort_order", "id")
 
     @classmethod
-    def active_products_for_user(cls, user):
+    def active_products_for_user(cls, user, own_vendor_only=False):
         products = (
             Product.all_objects.filter(
                 status=Product.Status.ACTIVE,
@@ -140,6 +150,7 @@ class CatalogQueryService:
                 "category",
                 "vendor",
             )
+            .annotate(total_stock=Sum("variants__stock_quantity"))
             .prefetch_related(
                 Prefetch("images", queryset=cls.product_images_for_list()),
             )
@@ -147,11 +158,13 @@ class CatalogQueryService:
 
         if user.is_authenticated and user.tenant_id:
             products = products.filter(tenant_id=user.tenant_id)
+            if own_vendor_only:
+                products = products.filter(vendor__user=user)
 
         return products
 
     @classmethod
-    def active_product_detail_for_user(cls, user, slug):
+    def active_product_detail_for_user(cls, user, slug, own_vendor_only=False):
         products = (
             Product.all_objects.filter(
                 status=Product.Status.ACTIVE,
@@ -169,12 +182,17 @@ class CatalogQueryService:
 
         if user.is_authenticated and user.tenant_id:
             products = products.filter(tenant_id=user.tenant_id)
+            if own_vendor_only:
+                products = products.filter(vendor__user=user)
 
         return get_object_or_404(products, slug=slug)
 
     @classmethod
     def filtered_search_products(cls, user, query_params):
-        products = cls.active_products_for_user(user)
+        products = cls.active_products_for_user(
+            user,
+            own_vendor_only=query_params.get("mine") == "1",
+        )
         query = query_params.get("q", "").strip()
         if query:
             search_vector = SearchVector("name", weight="A") + SearchVector(

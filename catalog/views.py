@@ -92,6 +92,7 @@ class ProductListView(VendorWritePermissionMixin, APIView):
     vendor_write_methods = {"POST"}
 
     @extend_schema(
+        operation_id="catalog_product_list",
         responses=inline_serializer(
             name="PaginatedProductListResponse",
             fields={
@@ -113,7 +114,10 @@ class ProductListView(VendorWritePermissionMixin, APIView):
     def get_product_list_data(self, request):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(
-            CatalogQueryService.active_products_for_user(request.user),
+            CatalogQueryService.active_products_for_user(
+                request.user,
+                own_vendor_only=request.query_params.get("mine") == "1",
+            ),
             request,
             view=self,
         )
@@ -125,6 +129,7 @@ class ProductListView(VendorWritePermissionMixin, APIView):
         return paginator.get_paginated_response(serializer.data).data
 
     @extend_schema(
+        operation_id="catalog_product_create",
         request=ProductCreateSerializer,
         responses={status.HTTP_201_CREATED: ProductDetailSerializer},
         tags=["Catalog"],
@@ -185,7 +190,10 @@ class ProductSearchView(APIView):
         serializer = ProductListSerializer(
             page,
             many=True,
-            context={"request": request},
+            context={
+                "request": request,
+                "include_stock": request.query_params.get("include_stock") == "1",
+            },
         )
         response = paginator.get_paginated_response(serializer.data)
         response.data["facets"] = CatalogQueryService.product_search_facets(
@@ -200,10 +208,14 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
     vendor_write_methods = {"PUT", "DELETE"}
 
     @extend_schema(
+        operation_id="catalog_product_detail",
         responses=ProductDetailSerializer,
         tags=["Catalog"],
     )
     def get(self, request, slug):
+        if request.query_params.get("mine") == "1":
+            return Response(self.get_product_detail_data(request, slug))
+
         response_data = CatalogQueryService.get_cached_product_detail(
             request,
             slug,
@@ -216,6 +228,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         product = CatalogQueryService.active_product_detail_for_user(
             request.user,
             slug,
+            own_vendor_only=request.query_params.get("mine") == "1",
         )
         serializer = ProductDetailSerializer(
             product,
@@ -224,6 +237,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         return serializer.data
 
     @extend_schema(
+        operation_id="catalog_product_update",
         request=ProductCreateSerializer,
         responses=ProductDetailSerializer,
         tags=["Catalog"],
@@ -248,6 +262,7 @@ class ProductDetailView(VendorWritePermissionMixin, APIView):
         return Response(response_serializer.data)
 
     @extend_schema(
+        operation_id="catalog_product_delete",
         responses={status.HTTP_204_NO_CONTENT: None},
         tags=["Catalog"],
     )

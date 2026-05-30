@@ -1,3 +1,5 @@
+from drf_spectacular.utils import OpenApiTypes, extend_schema_field
+from django.utils.text import slugify
 from rest_framework import serializers
 
 from vendor.models import VendorProfile
@@ -19,6 +21,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
             "children",
         ]
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_children(self, obj):
         children = obj.get_children().filter(is_active=True)
         serializer = self.__class__(
@@ -38,6 +41,8 @@ class ProductListSerializer(serializers.ModelSerializer):
     vendor = serializers.SerializerMethodField()
     thumbnail = serializers.SerializerMethodField()
     avg_rating = serializers.SerializerMethodField()
+    total_stock = serializers.SerializerMethodField()
+    is_out_of_stock = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -49,8 +54,17 @@ class ProductListSerializer(serializers.ModelSerializer):
             "vendor",
             "thumbnail",
             "avg_rating",
+            "total_stock",
+            "is_out_of_stock",
         ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.context.get("include_stock"):
+            self.fields.pop("total_stock", None)
+            self.fields.pop("is_out_of_stock", None)
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_vendor(self, obj):
         if obj.vendor_id is None:
             return None
@@ -58,6 +72,7 @@ class ProductListSerializer(serializers.ModelSerializer):
         serializer = VendorSummarySerializer(obj.vendor)
         return serializer.data
 
+    @extend_schema_field(OpenApiTypes.URI)
     def get_thumbnail(self, obj):
         primary_image = next(
             (image for image in obj.images.all() if image.is_primary),
@@ -74,8 +89,20 @@ class ProductListSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(thumbnail_url)
         return thumbnail_url
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_avg_rating(self, obj):
         return getattr(obj, "avg_rating", None)
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_total_stock(self, obj):
+        annotated_stock = getattr(obj, "total_stock", None)
+        if annotated_stock is not None:
+            return annotated_stock or 0
+        return 0
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_is_out_of_stock(self, obj):
+        return self.get_total_stock(obj) <= 0
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
@@ -184,11 +211,46 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    @extend_schema_field(OpenApiTypes.FLOAT)
     def get_avg_rating(self, obj):
         return getattr(obj, "avg_rating", None)
 
 
 class ProductCreateSerializer(serializers.ModelSerializer):
+    brand_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        write_only=True,
+    )
+    category_name = serializers.CharField(
+        max_length=255,
+        required=False,
+        write_only=True,
+    )
+    stock_quantity = serializers.IntegerField(
+        min_value=0,
+        required=False,
+        write_only=True,
+    )
+    color = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    storage = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    ram = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+
     class Meta:
         model = Product
         fields = [
@@ -201,6 +263,12 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             "status",
             "base_price",
             "tech_specs",
+            "brand_name",
+            "category_name",
+            "stock_quantity",
+            "color",
+            "storage",
+            "ram",
             "created_at",
             "updated_at",
         ]
@@ -222,6 +290,8 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             self.fields["category"].queryset = Category.all_objects.filter(
                 tenant=tenant,
             )
+            self.fields["brand"].required = False
+            self.fields["category"].required = False
         else:
             self.fields["brand"].queryset = Brand.all_objects.none()
             self.fields["category"].queryset = Category.all_objects.none()
@@ -234,6 +304,11 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "A tenant is required to create products.",
             )
+
+        if not attrs.get("brand") and not attrs.get("brand_name"):
+            attrs["brand_name"] = getattr(tenant, "name", "Vendor")
+        if not attrs.get("category") and not attrs.get("category_name"):
+            attrs["category_name"] = "General"
 
         slug = attrs.get("slug")
         sku = attrs.get("sku")
@@ -262,6 +337,55 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(errors)
 
         return attrs
+
+    def create(self, validated_data):
+        tenant = self.context["request"].user.tenant
+        brand_name = validated_data.pop("brand_name", "")
+        category_name = validated_data.pop("category_name", "")
+        stock_quantity = validated_data.pop("stock_quantity", 0)
+        color = validated_data.pop("color", "")
+        storage = validated_data.pop("storage", "")
+        ram = validated_data.pop("ram", "")
+
+        if not validated_data.get("brand"):
+            validated_data["brand"] = self.get_or_create_brand(tenant, brand_name)
+        if not validated_data.get("category"):
+            validated_data["category"] = self.get_or_create_category(
+                tenant,
+                category_name,
+            )
+
+        product = super().create(validated_data)
+        ProductVariant.objects.create(
+            tenant=tenant,
+            product=product,
+            variant_price=product.base_price,
+            stock_quantity=stock_quantity,
+            color=color,
+            storage=storage,
+            ram=ram,
+        )
+        return product
+
+    def get_or_create_brand(self, tenant, name):
+        name = name.strip() or tenant.name
+        slug = slugify(name)[:255] or f"brand-{tenant.id}"
+        brand, _created = Brand.all_objects.get_or_create(
+            tenant=tenant,
+            slug=slug,
+            defaults={"name": name},
+        )
+        return brand
+
+    def get_or_create_category(self, tenant, name):
+        name = name.strip() or "General"
+        slug = slugify(name)[:255] or "general"
+        category, _created = Category.all_objects.get_or_create(
+            tenant=tenant,
+            slug=slug,
+            defaults={"name": name, "is_active": True},
+        )
+        return category
 
 
 class ProductImageBulkUpdateItemSerializer(serializers.Serializer):

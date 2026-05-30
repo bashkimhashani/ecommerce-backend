@@ -1,4 +1,6 @@
+from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
+
 from .models import Inventory
 
 
@@ -11,6 +13,10 @@ class InventorySerializer(serializers.ModelSerializer):
         source="product_variant.product.sku",
         read_only=True,
     )
+    product_slug = serializers.CharField(
+        source="product_variant.product.slug",
+        read_only=True,
+    )
     variant_name = serializers.SerializerMethodField()
     is_low_stock = serializers.BooleanField(read_only=True)
 
@@ -21,6 +27,7 @@ class InventorySerializer(serializers.ModelSerializer):
             "product_variant",
             "product_name",
             "product_sku",
+            "product_slug",
             "variant_name",
             "vendor",
             "tenant",
@@ -35,6 +42,7 @@ class InventorySerializer(serializers.ModelSerializer):
             "product_variant",
             "product_name",
             "product_sku",
+            "product_slug",
             "variant_name",
             "vendor",
             "tenant",
@@ -43,6 +51,7 @@ class InventorySerializer(serializers.ModelSerializer):
             "last_updated",
         ]
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_variant_name(self, obj):
         values = [
             obj.product_variant.color,
