@@ -4,6 +4,7 @@ from datetime import timedelta
 import environ
 import stripe
 from celery.schedules import crontab
+from corsheaders.defaults import default_headers
 from kombu import Exchange, Queue
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -84,6 +85,7 @@ INSTALLED_APPS = [
     "orders",
     "inventory",
     "vendor",
+    "reviews",
     "request_logs",
 ]
 
@@ -191,6 +193,7 @@ if AWS_STORAGE_BUCKET_NAME:
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = env("CORS_ALLOW_CREDENTIALS")
+CORS_ALLOW_HEADERS = (*default_headers, "idempotency-key")
 
 REDIS_URL = env("REDIS_URL")
 CACHE_KEY_PREFIX = env("CACHE_KEY_PREFIX")
