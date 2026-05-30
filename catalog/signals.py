@@ -39,8 +39,10 @@ def invalidate_product_cache(product):
     )
     patterns = [
         f"*catalog:product-list:{tenant_scope}:*",
+        f"*catalog:product-list:{tenant_scope}:vendor:*",
         "*catalog:product-list:tenant:public:*",
         f"*catalog:product-detail:{tenant_scope}:{product.slug}",
+        f"*catalog:product-detail:{tenant_scope}:vendor:*:{product.slug}",
         f"*catalog:product-detail:tenant:public:{product.slug}",
     ]
 
@@ -83,6 +85,16 @@ def invalidate_product_cache_after_save(sender, instance, **kwargs):
 @receiver(post_delete, sender=Product)
 def invalidate_product_cache_after_delete(sender, instance, **kwargs):
     invalidate_product_cache(instance)
+
+
+@receiver(post_save, sender=ProductImage)
+def invalidate_product_image_cache_after_save(sender, instance, **kwargs):
+    invalidate_product_cache(instance.product)
+
+
+@receiver(post_delete, sender=ProductImage)
+def invalidate_product_image_cache_after_delete(sender, instance, **kwargs):
+    invalidate_product_cache(instance.product)
 
 
 def build_generated_image_path(original_name, product_image_id, size_name):
@@ -143,3 +155,4 @@ def generate_product_image_sizes(
         medium=instance.medium.name,
         large=instance.large.name,
     )
+    invalidate_product_cache(instance.product)
