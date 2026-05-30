@@ -65,7 +65,10 @@ class TenantRegisterView(APIView):
         ],
     )
     def post(self, request):
-        serializer = TenantRegistrationSerializer(data=request.data)
+        serializer = TenantRegistrationSerializer(
+            data=request.data,
+            context={"request": request},
+        )
         if serializer.is_valid():
             result = TenantRegistrationService.register(serializer)
             return Response(
