@@ -44,6 +44,22 @@ class SwaggerDocumentationTests(TestCase):
             self.minimum_documented_endpoint_count,
         )
 
+    def test_openapi_schema_documents_bearer_jwt_authentication(self):
+        response = self.client.get("/api/schema/")
+
+        self.assertEqual(response.status_code, 200)
+        schema = yaml.safe_load(response.content)
+        security_schemes = schema["components"]["securitySchemes"]
+
+        self.assertEqual(
+            security_schemes["BearerAuth"],
+            {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            },
+        )
+
 
 class CeleryRoutingSettingsTests(SimpleTestCase):
     def test_declares_default_email_and_ai_queues(self):
